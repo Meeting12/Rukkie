@@ -1,5 +1,7 @@
 services:
   - type: web
+    name: rukkie-redis
+  - type: redis
     name: rukkie-web
     env: python
     plan: starter
@@ -195,7 +197,3 @@ databases:
   - name: rukkie-db
     plan: starter
 
-services:
-  - type: redis
-    name: rukkie-redis
-    plan: starter
