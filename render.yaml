@@ -2,7 +2,7 @@ services:
   - type: web
     name: rukkie-web
     env: python
-    plan: starter
+    plan: basic-256mb
     healthCheckPath: /api/auth/status/
     buildCommand: |
       pip install -r requirements.txt &&
