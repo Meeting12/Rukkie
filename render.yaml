@@ -195,7 +195,7 @@ databases:
   - name: rukkie-db
     plan: starter
 
-addons:
+services:
   - type: redis
     name: rukkie-redis
     plan: starter
