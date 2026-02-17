@@ -1,0 +1,14 @@
+Django==5.2.4
+celery
+dj-database-url
+django-cors-headers
+djangorestframework
+gunicorn
+Pillow
+paypalrestsdk
+psycopg2-binary
+python-dotenv
+redis
+requests
+stripe
+whitenoise

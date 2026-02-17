@@ -1,0 +1,1 @@
+[{"id":1,"name":"Whitening Soap","slug":"whitening-soap","description":"soap","price":"100.00","stock":25,"is_active":true,"images":[{"id":1,"image":"http://127.0.0.1:8000/media/products/Screenshot_2025-09-24_223239.png","alt":"","order":0}],"categories":[{"id":1,"name":"SkinCare","slug":"skincare","parent":null}]}]

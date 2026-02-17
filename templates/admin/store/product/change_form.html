@@ -1,0 +1,14 @@
+{% extends "admin/change_form.html" %}
+
+{% load i18n admin_urls %}
+
+{% block object-tools %}
+    {{ block.super }}
+    {% if original %}
+        <li>
+            <a class="button" href="{% url 'admin:store_product_generate_metadata' original.pk %}">
+                Generate metadata from image
+            </a>
+        </li>
+    {% endif %}
+{% endblock %}

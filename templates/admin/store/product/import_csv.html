@@ -1,0 +1,23 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+  <p>
+    Required columns: <code>name</code>, <code>price</code>, <code>stock</code>.
+    Optional image columns: <code>image</code>, <code>image_url</code>, <code>images</code>.
+    Multiple images can be separated with comma, semicolon, pipe, or newline.
+    If your CSV uses local paths like <code>usd_image_test_imgs\file.jpg</code>, upload a ZIP in
+    <code>image_archive</code> containing that folder structure.
+    Category folders are auto-created at:
+    <code>media/products/categories/&lt;category-slug&gt;/{raw,processed,archive}</code>.
+  </p>
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    <table>
+      {{ form.as_table }}
+    </table>
+    <input type="submit" value="Upload" class="default">
+    <a href="..">Back to products</a>
+  </form>
+{% endblock %}
