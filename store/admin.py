@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import zipfile
+import time
 from urllib.parse import urlparse, unquote
 import base64
 from django.http import HttpResponse
@@ -258,6 +259,28 @@ def _save_product_image_from_bytes(product, content, order, ext='.jpg'):
 		raise ValueError('empty_image_content')
 	filename = _build_product_image_filename(product, ext)
 	image = ProductImage(product=product, alt=product.name, order=order)
+	if _storage_is_cloudinary():
+		# Use direct Cloudinary upload with explicit timeout to avoid hanging workers.
+		from cloudinary import uploader
+		public_id = os.path.splitext(filename)[0]
+		upload_timeout = max(5, int(os.environ.get('CLOUDINARY_UPLOAD_TIMEOUT_SECONDS', '25') or '25'))
+		result = uploader.upload(
+			ContentFile(content),
+			folder='products',
+			public_id=public_id,
+			overwrite=False,
+			unique_filename=False,
+			use_filename=False,
+			resource_type='image',
+			timeout=upload_timeout,
+		)
+		storage_name = str((result or {}).get('public_id') or f'products/{public_id}')
+		if not storage_name:
+			raise ValueError('cloudinary_upload_missing_public_id')
+		image.image.name = storage_name
+		image.save()
+		return image
+
 	image.image.save(filename, ContentFile(content), save=False)
 	image.save()
 	return image
@@ -732,6 +755,9 @@ class ProductAdmin(admin.ModelAdmin):
 				temp_archive_dir = None
 				archive_index = None
 				try:
+					started_at = time.monotonic()
+					csv_time_budget_seconds = max(0, int(os.environ.get('CSV_IMPORT_TIME_BUDGET_SECONDS', '90') or '90'))
+					timed_out = False
 					if archive:
 						temp_archive_dir = tempfile.mkdtemp(prefix='csv_img_archive_')
 						with zipfile.ZipFile(archive) as zf:
@@ -754,6 +780,16 @@ class ProductAdmin(admin.ModelAdmin):
 						'path_not_found': 0,
 					}
 					for row in reader:
+						if csv_time_budget_seconds and _storage_is_cloudinary():
+							elapsed = time.monotonic() - started_at
+							if elapsed >= csv_time_budget_seconds:
+								timed_out = True
+								logger.warning(
+									'csv.import paused reason=time_budget_exceeded elapsed=%.2fs budget=%ss',
+									elapsed,
+									csv_time_budget_seconds,
+								)
+								break
 						name = row.get('name')
 						if not name:
 							continue
@@ -833,7 +869,14 @@ class ProductAdmin(admin.ModelAdmin):
 						summary += f' Duplicate image paths skipped: {images_skipped_existing}.'
 					if image_fail_samples:
 						summary += f' Sample failures: {" | ".join(image_fail_samples)}.'
+					if timed_out:
+						summary += (
+							f' Import paused after {csv_time_budget_seconds}s to prevent request timeout. '
+							'Run the same CSV again to continue remaining rows.'
+						)
 					if images_failed:
+						messages.warning(request, summary)
+					elif timed_out:
 						messages.warning(request, summary)
 					else:
 						messages.success(request, summary)

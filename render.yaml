@@ -16,7 +16,7 @@ services:
       npm run build:django --prefix frontend &&
       python manage.py collectstatic --noinput
     preDeployCommand: python manage.py migrate --noinput
-    startCommand: gunicorn Rukkie.wsgi:application --workers 3 --timeout 120
+    startCommand: gunicorn Rukkie.wsgi:application --workers 3 --timeout 600
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: Rukkie.settings
@@ -48,6 +48,10 @@ services:
         sync: false
       - key: REQUEST_BODY_MAX_BYTES
         value: "2097152"
+      - key: CLOUDINARY_UPLOAD_TIMEOUT_SECONDS
+        value: "60"
+      - key: CSV_IMPORT_TIME_BUDGET_SECONDS
+        value: "540"
       - key: RATE_LIMIT_CHAT_LIMIT
         value: "45"
       - key: RATE_LIMIT_CHAT_WINDOW_SECONDS
