@@ -632,12 +632,22 @@ class ProductAdminForm(forms.ModelForm):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
 	form = ProductAdminForm
-	list_display = ('name', 'slug', 'category_links', 'price', 'stock', 'is_active')
-	list_filter = ('is_active', 'categories')
+	list_display = ('name', 'slug', 'category_links', 'price', 'stock', 'is_featured', 'is_flash_sale', 'is_digital', 'is_active')
+	list_filter = ('is_active', 'is_featured', 'is_flash_sale', 'is_digital', 'categories')
 	search_fields = ('name', 'slug', 'description')
 	inlines = [ProductImageInline]
 	prepopulated_fields = {'slug': ('name',)}
-	actions = ['generate_metadata_from_images']
+	actions = [
+		'generate_metadata_from_images',
+		'mark_selected_active',
+		'mark_selected_inactive',
+		'mark_selected_featured',
+		'mark_selected_not_featured',
+		'mark_selected_flash_sale',
+		'mark_selected_not_flash_sale',
+		'mark_selected_digital',
+		'mark_selected_not_digital',
+	]
 	# no auto-metadata fields
 	change_list_template = 'admin/store/product/change_list.html'
 
@@ -882,6 +892,46 @@ class ProductAdmin(admin.ModelAdmin):
 		self.message_user(request, message)
 
 	generate_metadata_from_images.short_description = 'Generate metadata from product images'
+
+	def mark_selected_active(self, request, queryset):
+		updated = queryset.update(is_active=True)
+		self.message_user(request, f"{updated} product(s) marked as active.")
+	mark_selected_active.short_description = 'Mark selected products as Active'
+
+	def mark_selected_inactive(self, request, queryset):
+		updated = queryset.update(is_active=False)
+		self.message_user(request, f"{updated} product(s) marked as inactive.")
+	mark_selected_inactive.short_description = 'Mark selected products as Inactive'
+
+	def mark_selected_featured(self, request, queryset):
+		updated = queryset.update(is_featured=True)
+		self.message_user(request, f"{updated} product(s) marked as featured.")
+	mark_selected_featured.short_description = 'Mark selected products as Featured'
+
+	def mark_selected_not_featured(self, request, queryset):
+		updated = queryset.update(is_featured=False)
+		self.message_user(request, f"{updated} product(s) removed from featured.")
+	mark_selected_not_featured.short_description = 'Remove selected products from Featured'
+
+	def mark_selected_flash_sale(self, request, queryset):
+		updated = queryset.update(is_flash_sale=True)
+		self.message_user(request, f"{updated} product(s) marked as flash sale.")
+	mark_selected_flash_sale.short_description = 'Mark selected products as Flash Sale'
+
+	def mark_selected_not_flash_sale(self, request, queryset):
+		updated = queryset.update(is_flash_sale=False)
+		self.message_user(request, f"{updated} product(s) removed from flash sale.")
+	mark_selected_not_flash_sale.short_description = 'Remove selected products from Flash Sale'
+
+	def mark_selected_digital(self, request, queryset):
+		updated = queryset.update(is_digital=True)
+		self.message_user(request, f"{updated} product(s) marked as digital.")
+	mark_selected_digital.short_description = 'Mark selected products as Digital'
+
+	def mark_selected_not_digital(self, request, queryset):
+		updated = queryset.update(is_digital=False)
+		self.message_user(request, f"{updated} product(s) marked as non-digital.")
+	mark_selected_not_digital.short_description = 'Mark selected products as Non-Digital'
 
 
 
