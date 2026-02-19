@@ -311,6 +311,21 @@ def _create_product_image_from_data_uri(product, data_uri, order):
 	return _save_product_image_from_bytes(product, content, order, ext)
 
 
+def _as_storage_image_name(value):
+	"""
+	Convert inputs (full Cloudinary URL, /media/ path, etc.) into a storage name.
+	Output example: 'products/xyz.jpg'
+	"""
+	v = str(value or '').strip()
+	if not v:
+		return ''
+	if v.lower().startswith(('http://', 'https://')):
+		path = urlparse(v).path.lstrip('/')  # <cloud>/<public_id>
+		parts = path.split('/', 1)
+		return parts[1] if len(parts) == 2 else ''
+	return _normalize_media_image_path(v)
+
+
 def _attach_csv_images_to_product(product, image_sources, archive_index=None, category_slugs=None):
 	"""
 	Attach images from CSV sources.
@@ -328,7 +343,8 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 		'path_not_found': 0,
 	}
 	order = product.images.count()
-	existing_paths = set(product.images.values_list('image', flat=True))
+	existing_paths = set(_as_storage_image_name(v) for v in product.images.values_list('image', flat=True))
+	existing_paths.discard('')
 
 	for source in image_sources:
 		source = str(source or '').strip()
@@ -354,16 +370,21 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 			parsed = urlparse(source)
 			local_candidate = _resolve_existing_image_path(parsed.path or '')
 			if local_candidate:
-				if local_candidate in existing_paths:
+				storage_name = _as_storage_image_name(local_candidate)
+				if not storage_name:
+					failed += 1
+					fail_reason_counts['path_not_found'] += 1
+					if len(failed_samples) < 5:
+						failed_samples.append(f'{source[:120]} (path not found)')
+					logger.warning('csv.import image_path_not_found product_id=%s source=%s', product.id, source)
+					continue
+				if storage_name in existing_paths:
 					skipped_existing += 1
 					continue
-				ProductImage.objects.create(
-					product=product,
-					image=local_candidate,
-					alt=product.name,
-					order=order,
-				)
-				existing_paths.add(local_candidate)
+				img = ProductImage(product=product, alt=product.name, order=order)
+				img.image.name = storage_name
+				img.save()
+				existing_paths.add(storage_name)
 				created += 1
 				order += 1
 				continue
@@ -421,13 +442,19 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 			skipped_existing += 1
 			continue
 
-		ProductImage.objects.create(
-			product=product,
-			image=relative_path,
-			alt=product.name,
-			order=order,
-		)
-		existing_paths.add(relative_path)
+		storage_name = _as_storage_image_name(relative_path)
+		if not storage_name:
+			failed += 1
+			fail_reason_counts['path_not_found'] += 1
+			if len(failed_samples) < 5:
+				failed_samples.append(f'{source[:120]} (path not found)')
+			logger.warning('csv.import image_path_not_found product_id=%s source=%s', product.id, source)
+			continue
+
+		img = ProductImage(product=product, alt=product.name, order=order)
+		img.image.name = storage_name
+		img.save()
+		existing_paths.add(storage_name)
 		created += 1
 		order += 1
 
@@ -959,4 +986,3 @@ class AssistantPolicyAdmin(admin.ModelAdmin):
 	list_display = ('key', 'title', 'is_active', 'updated_at')
 	list_filter = ('is_active',)
 	search_fields = ('key', 'title', 'content')
-
