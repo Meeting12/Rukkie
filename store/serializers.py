@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import os
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from .models import Product, ProductImage, Category, HomeHeroSlide, Cart, CartItem, Order, OrderItem, ShippingMethod, Address, Wishlist, Page, PaymentTransaction, ProductReview
 
 User = get_user_model()
@@ -43,33 +43,49 @@ def _fallback_image_url_from_name(name: str) -> str:
                 parts = [p for p in parsed.path.split('/') if p]
                 # /<cloud_name>/<public_id...>
                 if len(parts) >= 2:
-                    public_id = '/'.join(parts[1:])
-                    return f'{parsed.scheme}://{parsed.netloc}/image/upload/{public_id}'
+                    cloud_name = parts[0]
+                    public_id = quote('/'.join(parts[1:]), safe='/')
+                    return f'{parsed.scheme}://{parsed.netloc}/{cloud_name}/image/upload/{public_id}'
             except Exception:
                 pass
         return cleaned
     if cleaned.startswith('media/'):
         return f'/{cleaned}'
     if cleaned.startswith(('products/', 'categories/', 'hero/')):
+        cloud_name = _cloudinary_cloud_name()
+        if cloud_name:
+            return f'https://res.cloudinary.com/{cloud_name}/image/upload/{quote(cleaned, safe="/")}'
         return f'/media/{cleaned}'
     if cleaned.startswith('res.cloudinary.com/'):
-        return f'https://{cleaned}'
+        candidate = f'https://{cleaned}'
+        if '/image/upload/' not in candidate:
+            try:
+                parsed = urlparse(candidate)
+                parts = [p for p in parsed.path.split('/') if p]
+                if len(parts) >= 2:
+                    cloud_name = parts[0]
+                    public_id = quote('/'.join(parts[1:]), safe='/')
+                    return f'https://{parsed.netloc}/{cloud_name}/image/upload/{public_id}'
+            except Exception:
+                pass
+        return candidate
 
     # Cloudinary often stores a public_id in the field value; construct delivery URL.
     cloud_name = _cloudinary_cloud_name()
     if cloud_name:
-        return f'https://res.cloudinary.com/{cloud_name}/image/upload/{cleaned}'
+        return f'https://res.cloudinary.com/{cloud_name}/image/upload/{quote(cleaned, safe="/")}'
     return f'/media/{cleaned}'
 
 
 def _resolve_image_url(field_file, request=None) -> str:
     if not field_file:
         return ''
-    url = ''
+    raw_url = ''
     try:
-        url = str(field_file.url or '').strip()
+        raw_url = str(field_file.url or '').strip()
     except Exception:
-        url = ''
+        raw_url = ''
+    url = _fallback_image_url_from_name(raw_url) if raw_url else ''
     if not url:
         url = _fallback_image_url_from_name(getattr(field_file, 'name', ''))
     if not url:
