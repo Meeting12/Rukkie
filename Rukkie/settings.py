@@ -223,7 +223,11 @@ if USE_CLOUDINARY_MEDIA:
             'API_KEY': cloudinary_api_key,
             'API_SECRET': cloudinary_api_secret,
         })
-    MEDIA_URL = f"https://res.cloudinary.com/{cloudinary_cloud_name}/" if cloudinary_cloud_name else '/media/'
+    # Keep MEDIA_URL as a relative prefix for Django file naming logic.
+    # Cloudinary storage still returns full CDN URLs via `field.url`.
+    # Setting MEDIA_URL to a Cloudinary absolute base can leak into generated
+    # names/public_id and cause "public_id is too long" upload failures.
+    MEDIA_URL = '/media/'
     STORAGES = {
         'default': {'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage'},
         'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},

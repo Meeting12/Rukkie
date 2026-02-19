@@ -243,6 +243,8 @@ def _build_product_image_filename(product, ext='.jpg'):
 	# <upload_prefix><base>-<10hex><ext>
 	reserved = len(upload_prefix) + 1 + 10 + len(ext)
 	max_base_len = max(8, max_len - reserved)
+	# Keep Cloudinary public IDs comfortably short regardless of DB max_length.
+	max_base_len = min(max_base_len, 72)
 	base = slugify(product.slug or product.name) or 'product'
 	if len(base) > max_base_len:
 		base = base[:max_base_len].rstrip('-_')

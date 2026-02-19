@@ -1,22 +1,90 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.conf import settings
+import os
+from urllib.parse import urlparse
 from .models import Product, ProductImage, Category, HomeHeroSlide, Cart, CartItem, Order, OrderItem, ShippingMethod, Address, Wishlist, Page, PaymentTransaction, ProductReview
 
 User = get_user_model()
+
+
+def _cloudinary_cloud_name():
+    storage_cfg = getattr(settings, 'CLOUDINARY_STORAGE', {}) or {}
+    cloud_name = str(storage_cfg.get('CLOUD_NAME') or '').strip()
+    if cloud_name:
+        return cloud_name
+    cloudinary_url = str(os.environ.get('CLOUDINARY_URL') or '').strip().strip('"').strip("'")
+    if cloudinary_url.lower().startswith('cloudinary_url='):
+        cloudinary_url = cloudinary_url.split('=', 1)[1].strip().strip('"').strip("'")
+    if not cloudinary_url:
+        return ''
+    try:
+        parsed = urlparse(cloudinary_url)
+        if parsed.scheme == 'cloudinary':
+            return str(parsed.hostname or '').strip()
+    except Exception:
+        return ''
+    return ''
+
+
+def _fallback_image_url_from_name(name: str) -> str:
+    cleaned = str(name or '').strip().replace('\\', '/').lstrip('/')
+    if not cleaned:
+        return ''
+    if cleaned.startswith('https:/') and not cleaned.startswith('https://'):
+        cleaned = cleaned.replace('https:/', 'https://', 1)
+    if cleaned.startswith('http:/') and not cleaned.startswith('http://'):
+        cleaned = cleaned.replace('http:/', 'http://', 1)
+    if cleaned.startswith('http://') or cleaned.startswith('https://') or cleaned.startswith('data:'):
+        # If a Cloudinary URL was stored without `/image/upload/`, normalize it.
+        if 'res.cloudinary.com/' in cleaned and '/image/upload/' not in cleaned:
+            try:
+                parsed = urlparse(cleaned)
+                parts = [p for p in parsed.path.split('/') if p]
+                # /<cloud_name>/<public_id...>
+                if len(parts) >= 2:
+                    public_id = '/'.join(parts[1:])
+                    return f'{parsed.scheme}://{parsed.netloc}/image/upload/{public_id}'
+            except Exception:
+                pass
+        return cleaned
+    if cleaned.startswith('media/'):
+        return f'/{cleaned}'
+    if cleaned.startswith(('products/', 'categories/', 'hero/')):
+        return f'/media/{cleaned}'
+    if cleaned.startswith('res.cloudinary.com/'):
+        return f'https://{cleaned}'
+
+    # Cloudinary often stores a public_id in the field value; construct delivery URL.
+    cloud_name = _cloudinary_cloud_name()
+    if cloud_name:
+        return f'https://res.cloudinary.com/{cloud_name}/image/upload/{cleaned}'
+    return f'/media/{cleaned}'
+
+
+def _resolve_image_url(field_file, request=None) -> str:
+    if not field_file:
+        return ''
+    url = ''
+    try:
+        url = str(field_file.url or '').strip()
+    except Exception:
+        url = ''
+    if not url:
+        url = _fallback_image_url_from_name(getattr(field_file, 'name', ''))
+    if not url:
+        return ''
+    if request and url.startswith('/'):
+        return request.build_absolute_uri(url)
+    return url
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
 
     def get_image_url(self, obj):
-        if not getattr(obj, 'image', None):
-            return ''
-        try:
-            request = self.context.get('request')
-            url = obj.image.url
-            return request.build_absolute_uri(url) if request else url
-        except Exception:
-            return ''
+        request = self.context.get('request')
+        return _resolve_image_url(getattr(obj, 'image', None), request)
 
     class Meta:
         model = ProductImage
@@ -28,14 +96,8 @@ class CategorySerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
 
     def get_image_url(self, obj):
-        if not getattr(obj, 'image', None):
-            return ''
-        try:
-            request = self.context.get('request')
-            url = obj.image.url
-            return request.build_absolute_uri(url) if request else url
-        except Exception:
-            return ''
+        request = self.context.get('request')
+        return _resolve_image_url(getattr(obj, 'image', None), request)
 
     class Meta:
         model = Category
@@ -46,14 +108,8 @@ class HomeHeroSlideSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
 
     def get_image_url(self, obj):
-        if not getattr(obj, 'image', None):
-            return ''
-        try:
-            request = self.context.get('request')
-            url = obj.image.url
-            return request.build_absolute_uri(url) if request else url
-        except Exception:
-            return ''
+        request = self.context.get('request')
+        return _resolve_image_url(getattr(obj, 'image', None), request)
 
     class Meta:
         model = HomeHeroSlide

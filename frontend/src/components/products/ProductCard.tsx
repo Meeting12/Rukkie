@@ -53,6 +53,10 @@ export const ProductCard = ({ product }: ProductCardProps) => {
             alt={product.name}
             className="w-full h-full object-cover"
             loading="lazy"
+            onError={(e) => {
+              const target = e.currentTarget as HTMLImageElement;
+              if (target.src !== fallbackImage) target.src = fallbackImage;
+            }}
           />
 
           {/* Badges */}

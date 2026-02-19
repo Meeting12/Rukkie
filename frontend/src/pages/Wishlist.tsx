@@ -8,6 +8,8 @@ import { useCart } from "@/context/CartContext";
 const Wishlist = () => {
   const { items, removeFromWishlist, clearWishlist } = useWishlist();
   const { addToCart } = useCart();
+  const fallbackImage =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'%3E%3Crect width='400' height='400' fill='%23f1f1f1'/%3E%3Ctext x='50%25' y='50%25' fill='%23777' font-size='24' text-anchor='middle' dominant-baseline='middle'%3ENo Image%3C/text%3E%3C/svg%3E";
 
   const handleAddToCart = (product: typeof items[0]) => {
     addToCart(product);
@@ -68,6 +70,10 @@ const Wishlist = () => {
                       src={product.images[0]}
                       alt={product.name}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (target.src !== fallbackImage) target.src = fallbackImage;
+                      }}
                     />
                     <button
                       onClick={() => handleRemove(product.id)}

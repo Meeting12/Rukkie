@@ -16,7 +16,7 @@ class CSPMiddleware:
 
     POLICY = (
         "default-src 'self'; "
-        f"script-src {BASE_SCRIPT_SRC}; "
+        f"script-src 'unsafe-inline' {BASE_SCRIPT_SRC}; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "img-src 'self' data: https:; "
         "font-src 'self' data: https://fonts.gstatic.com; "

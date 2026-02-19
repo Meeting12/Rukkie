@@ -22,10 +22,12 @@ function normalizeImageUrl(value: any): string {
   const cleaned = String(raw || "").trim().replace(/\\/g, "/");
   if (!cleaned) return WISHLIST_PLACEHOLDER_IMAGE;
   if (/^https?:\/\//i.test(cleaned) || cleaned.startsWith("data:")) return cleaned;
+  if (cleaned.startsWith("res.cloudinary.com/")) return `https://${cleaned}`;
   if (cleaned.startsWith("/")) return cleaned;
   if (cleaned.startsWith("media/")) return `/${cleaned}`;
   if (cleaned.startsWith("products/")) return `/media/${cleaned}`;
-  return `/${cleaned}`;
+  if (/^[^/]+\.(jpg|jpeg|png|webp|gif|bmp|svg|avif)$/i.test(cleaned)) return `/media/products/${cleaned}`;
+  return WISHLIST_PLACEHOLDER_IMAGE;
 }
 
 function normalizeWishlistProduct(product: any): Product {
