@@ -67,18 +67,59 @@ def _normalize_media_image_path(value):
 	return cleaned
 
 
+def _storage_is_cloudinary():
+	try:
+		backend = default_storage.__class__.__module__ + '.' + default_storage.__class__.__name__
+	except Exception:
+		backend = ''
+	return 'cloudinary_storage' in (backend or '').lower() or bool(getattr(settings, 'USE_CLOUDINARY_MEDIA', False))
+
+
+def _storage_exists_safe(name: str) -> bool:
+	"""
+	Cloudinary storage's exists() may do a HEAD without a timeout and can hang Gunicorn workers.
+	So we NEVER call exists() on Cloudinary.
+	"""
+	if not name:
+		return False
+	if _storage_is_cloudinary():
+		return False
+	try:
+		return bool(default_storage.exists(name))
+	except Exception:
+		return False
+
+
 def _resolve_existing_image_path(value):
-	"""Resolve a CSV path to an existing media file path."""
+	"""
+	Resolve a CSV path to an existing media file path.
+
+	IMPORTANT:
+	- On Cloudinary storage, calling default_storage.exists() can hang (requests.head without timeout),
+	  causing Gunicorn WORKER TIMEOUT. So we skip remote existence checks entirely.
+	- Instead, we only normalize paths here. Real uploads happen via URL download / ZIP / local file bytes.
+	"""
 	normalized = _normalize_media_image_path(value)
 	if not normalized:
 		return ''
-	if default_storage.exists(normalized):
+
+	# If you're on Cloudinary, don't call exists() here (prevents WORKER TIMEOUT).
+	# Just return normalized/candidate; later logic decides whether to attach or upload.
+	if _storage_is_cloudinary():
+		filename = os.path.basename(normalized)
+		if filename and not normalized.startswith('products/'):
+			return f'products/{filename}'
 		return normalized
+
+	# Local or safe storage: check existence
+	if _storage_exists_safe(normalized):
+		return normalized
+
 	# Support bare filenames like "chair.jpg" by checking products/ folder.
 	filename = os.path.basename(normalized)
 	if filename:
 		candidate = f'products/{filename}'
-		if default_storage.exists(candidate):
+		if _storage_exists_safe(candidate):
 			return candidate
 	return ''
 
@@ -319,10 +360,32 @@ def _as_storage_image_name(value):
 	v = str(value or '').strip()
 	if not v:
 		return ''
+
 	if v.lower().startswith(('http://', 'https://')):
-		path = urlparse(v).path.lstrip('/')  # <cloud>/<public_id>
-		parts = path.split('/', 1)
-		return parts[1] if len(parts) == 2 else ''
+		parsed = urlparse(v)
+		path = (parsed.path or '').strip()
+
+		# Cloudinary URL patterns:
+		# /<cloud>/image/upload/<transformations>/v123/folder/file.jpg
+		# /<cloud>/image/upload/v123/folder/file.jpg
+		if '/upload/' in path:
+			after = path.split('/upload/', 1)[1].lstrip('/')
+			parts = [p for p in after.split('/') if p]
+
+			# Drop transformation segments until we hit version "v123"
+			while parts and not re.match(r'^v\d+$', parts[0]):
+				parts.pop(0)
+
+			# Drop version segment if present
+			if parts and re.match(r'^v\d+$', parts[0]):
+				parts.pop(0)
+
+			public_name = '/'.join(parts).strip('/')
+			return public_name
+
+		# Fallback: try to use last path segment (rare)
+		return os.path.basename(path.strip('/'))
+
 	return _normalize_media_image_path(v)
 
 
@@ -343,6 +406,7 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 		'path_not_found': 0,
 	}
 	order = product.images.count()
+
 	existing_paths = set(_as_storage_image_name(v) for v in product.images.values_list('image', flat=True))
 	existing_paths.discard('')
 
@@ -365,19 +429,9 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 			continue
 
 		if source.lower().startswith(('http://', 'https://')):
-			# Common export format: absolute URL to this site's /media/... path.
-			# Resolve to local media file first to avoid self-download failures/timeouts.
-			parsed = urlparse(source)
-			local_candidate = _resolve_existing_image_path(parsed.path or '')
-			if local_candidate:
-				storage_name = _as_storage_image_name(local_candidate)
-				if not storage_name:
-					failed += 1
-					fail_reason_counts['path_not_found'] += 1
-					if len(failed_samples) < 5:
-						failed_samples.append(f'{source[:120]} (path not found)')
-					logger.warning('csv.import image_path_not_found product_id=%s source=%s', product.id, source)
-					continue
+			# If it's already a Cloudinary URL, attach by public name (no download).
+			storage_name = _as_storage_image_name(source)
+			if storage_name and _storage_is_cloudinary():
 				if storage_name in existing_paths:
 					skipped_existing += 1
 					continue
@@ -388,6 +442,8 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 				created += 1
 				order += 1
 				continue
+
+			# Otherwise: try download (this uploads bytes into Cloudinary via .save()).
 			try:
 				_create_product_image_from_url(product, source, order)
 				created += 1
@@ -400,49 +456,39 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 				logger.exception('csv.import image_download_failed product_id=%s source=%s', product.id, source)
 			continue
 
-		relative_path = _resolve_existing_image_path(source)
-		if not relative_path:
-			archive_file = _resolve_archive_file(source, archive_index)
-			if archive_file:
-				try:
-					_create_product_image_from_local_path(product, archive_file, order)
-					created += 1
-					order += 1
-					continue
-				except Exception as exc:
-					failed += 1
-					fail_reason_counts['archive_copy_failed'] += 1
-					if len(failed_samples) < 5:
-						failed_samples.append(f'{source[:120]} (archive copy failed: {_summarize_exception(exc, 80)})')
-					logger.exception('csv.import image_archive_copy_failed product_id=%s source=%s', product.id, source)
-					continue
+		# Non-URL: first try ZIP archive/local filesystem to UPLOAD BYTES (best for Render).
+		archive_file = _resolve_archive_file(source, archive_index)
+		if archive_file:
+			try:
+				_create_product_image_from_local_path(product, archive_file, order)
+				created += 1
+				order += 1
+				continue
+			except Exception as exc:
+				failed += 1
+				fail_reason_counts['archive_copy_failed'] += 1
+				if len(failed_samples) < 5:
+					failed_samples.append(f'{source[:120]} (archive copy failed: {_summarize_exception(exc, 80)})')
+				logger.exception('csv.import image_archive_copy_failed product_id=%s source=%s', product.id, source)
+				continue
 
-			local_file = _resolve_local_filesystem_path(source, category_slugs=category_slugs)
-			if local_file:
-				try:
-					_create_product_image_from_local_path(product, local_file, order)
-					created += 1
-					order += 1
-					continue
-				except Exception as exc:
-					failed += 1
-					fail_reason_counts['local_copy_failed'] += 1
-					if len(failed_samples) < 5:
-						failed_samples.append(f'{source[:120]} (local copy failed: {_summarize_exception(exc, 80)})')
-					logger.exception('csv.import image_local_copy_failed product_id=%s source=%s', product.id, source)
-					continue
+		local_file = _resolve_local_filesystem_path(source, category_slugs=category_slugs)
+		if local_file:
+			try:
+				_create_product_image_from_local_path(product, local_file, order)
+				created += 1
+				order += 1
+				continue
+			except Exception as exc:
+				failed += 1
+				fail_reason_counts['local_copy_failed'] += 1
+				if len(failed_samples) < 5:
+					failed_samples.append(f'{source[:120]} (local copy failed: {_summarize_exception(exc, 80)})')
+				logger.exception('csv.import image_local_copy_failed product_id=%s source=%s', product.id, source)
+				continue
 
-			failed += 1
-			fail_reason_counts['path_not_found'] += 1
-			if len(failed_samples) < 5:
-				failed_samples.append(f'{source[:120]} (path not found)')
-			logger.warning('csv.import image_path_not_found product_id=%s source=%s', product.id, source)
-			continue
-		if relative_path in existing_paths:
-			skipped_existing += 1
-			continue
-
-		storage_name = _as_storage_image_name(relative_path)
+		# As a LAST resort: treat it as a storage name reference (useful when CSV already contains Cloudinary public IDs).
+		storage_name = _as_storage_image_name(source)
 		if not storage_name:
 			failed += 1
 			fail_reason_counts['path_not_found'] += 1
@@ -451,6 +497,11 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 			logger.warning('csv.import image_path_not_found product_id=%s source=%s', product.id, source)
 			continue
 
+		if storage_name in existing_paths:
+			skipped_existing += 1
+			continue
+
+		# Attach without calling default_storage.exists() (prevents Cloudinary HEAD hang)
 		img = ProductImage(product=product, alt=product.name, order=order)
 		img.image.name = storage_name
 		img.save()
