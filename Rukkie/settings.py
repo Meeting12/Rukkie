@@ -189,10 +189,14 @@ if USE_CLOUDINARY_MEDIA:
     cloudinary_url = (os.environ.get('CLOUDINARY_URL') or '').strip().strip('"').strip("'")
     if cloudinary_url.lower().startswith('cloudinary_url='):
         cloudinary_url = cloudinary_url.split('=', 1)[1].strip().strip('"').strip("'")
+    has_cloudinary_url = cloudinary_url.lower().startswith('cloudinary://')
+    if has_cloudinary_url:
+        # Preserve cleaned value for downstream libs.
+        os.environ['CLOUDINARY_URL'] = cloudinary_url
     cloudinary_cloud_name = ''
     cloudinary_api_key = ''
     cloudinary_api_secret = ''
-    if cloudinary_url:
+    if has_cloudinary_url:
         try:
             parsed = urlparse(cloudinary_url)
             if parsed.scheme == 'cloudinary':
@@ -203,19 +207,22 @@ if USE_CLOUDINARY_MEDIA:
             cloudinary_cloud_name = ''
             cloudinary_api_key = ''
             cloudinary_api_secret = ''
-    is_collectstatic = any(arg == 'collectstatic' for arg in sys.argv[1:])
-    if not (cloudinary_cloud_name and cloudinary_api_key and cloudinary_api_secret) and not DEBUG and not is_collectstatic:
+    is_bootstrap_command = any(arg in ('collectstatic', 'migrate', 'makemigrations', 'check') for arg in sys.argv[1:])
+    if not has_cloudinary_url and not DEBUG and not is_bootstrap_command:
         raise ImproperlyConfigured(
             'Cloudinary media is enabled but credentials are missing. '
             'Set CLOUDINARY_URL as cloudinary://<api_key>:<api_secret>@<cloud_name>.'
         )
 
     CLOUDINARY_STORAGE = {
-        'CLOUD_NAME': cloudinary_cloud_name,
-        'API_KEY': cloudinary_api_key,
-        'API_SECRET': cloudinary_api_secret,
         'SECURE': str(os.environ.get('CLOUDINARY_SECURE', 'True')).strip().lower() in ('1', 'true', 'yes', 'on'),
     }
+    if cloudinary_cloud_name and cloudinary_api_key and cloudinary_api_secret:
+        CLOUDINARY_STORAGE.update({
+            'CLOUD_NAME': cloudinary_cloud_name,
+            'API_KEY': cloudinary_api_key,
+            'API_SECRET': cloudinary_api_secret,
+        })
     MEDIA_URL = f"https://res.cloudinary.com/{cloudinary_cloud_name}/" if cloudinary_cloud_name else '/media/'
     STORAGES = {
         'default': {'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage'},
