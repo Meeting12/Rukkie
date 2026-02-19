@@ -270,6 +270,64 @@ class AssistantPolicy(models.Model):
 		return f"{self.title} ({self.key})"
 
 
+class UserNotification(models.Model):
+	LEVEL_INFO = 'info'
+	LEVEL_SUCCESS = 'success'
+	LEVEL_WARNING = 'warning'
+	LEVEL_ERROR = 'error'
+	LEVEL_CHOICES = [
+		(LEVEL_INFO, 'Info'),
+		(LEVEL_SUCCESS, 'Success'),
+		(LEVEL_WARNING, 'Warning'),
+		(LEVEL_ERROR, 'Error'),
+	]
+
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='notifications', on_delete=models.CASCADE)
+	title = models.CharField(max_length=200)
+	message = models.TextField()
+	level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default=LEVEL_INFO)
+	is_read = models.BooleanField(default=False)
+	read_at = models.DateTimeField(null=True, blank=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['-created_at']
+
+	def __str__(self):
+		return f"{self.user} - {self.title}"
+
+
+class UserMailboxMessage(models.Model):
+	CATEGORY_GENERAL = 'general'
+	CATEGORY_SECURITY = 'security'
+	CATEGORY_ORDER = 'order'
+	CATEGORY_PAYMENT = 'payment'
+	CATEGORY_ACCOUNT = 'account'
+	CATEGORY_CHOICES = [
+		(CATEGORY_GENERAL, 'General'),
+		(CATEGORY_SECURITY, 'Security'),
+		(CATEGORY_ORDER, 'Order'),
+		(CATEGORY_PAYMENT, 'Payment'),
+		(CATEGORY_ACCOUNT, 'Account'),
+	]
+
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='mailbox_messages', on_delete=models.CASCADE)
+	subject = models.CharField(max_length=255)
+	body = models.TextField()
+	category = models.CharField(max_length=30, choices=CATEGORY_CHOICES, default=CATEGORY_GENERAL)
+	is_read = models.BooleanField(default=False)
+	read_at = models.DateTimeField(null=True, blank=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['-created_at']
+
+	def __str__(self):
+		return f"{self.user} - {self.subject}"
+
+
 class PendingMetadata(models.Model):
 	product = models.ForeignKey(Product, related_name='pending_metadata', on_delete=models.CASCADE)
 	metadata = models.JSONField()

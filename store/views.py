@@ -6,11 +6,13 @@ from rest_framework.response import Response
 from .models import (
     Product, Cart, CartItem, Order, OrderItem, ShippingMethod, Address, Category,
     ContactMessage, NewsletterSubscription, PaymentTransaction, HomeHeroSlide, Wishlist, ProductReview, AssistantPolicy,
+    UserNotification, UserMailboxMessage,
 )
 from django.db.models import Count, Q, Avg
 from .serializers import (
     ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer,
-    ShippingMethodSerializer, AddressSerializer, CategorySerializer, HomeHeroSlideSerializer, ProductReviewSerializer
+    ShippingMethodSerializer, AddressSerializer, CategorySerializer, HomeHeroSlideSerializer, ProductReviewSerializer,
+    UserNotificationSerializer, UserMailboxMessageSerializer,
 )
 from django.db import transaction
 from decimal import Decimal, InvalidOperation
@@ -108,6 +110,36 @@ def _safe_send_email(*, subject, message, recipient_list, event_name):
         return False
 
 
+def _create_user_notification(user, *, title, message, level='info'):
+    if not user or not getattr(user, 'is_authenticated', False):
+        return None
+    try:
+        return UserNotification.objects.create(
+            user=user,
+            title=str(title or '').strip()[:200] or 'Notification',
+            message=str(message or '').strip(),
+            level=(str(level or '').strip().lower() or UserNotification.LEVEL_INFO),
+        )
+    except Exception:
+        logger.exception('account.notification create_failed user_id=%s title=%s', getattr(user, 'id', None), title)
+        return None
+
+
+def _create_user_mailbox_message(user, *, subject, body, category='general'):
+    if not user or not getattr(user, 'is_authenticated', False):
+        return None
+    try:
+        return UserMailboxMessage.objects.create(
+            user=user,
+            subject=str(subject or '').strip()[:255] or 'Message',
+            body=str(body or '').strip(),
+            category=(str(category or '').strip().lower() or UserMailboxMessage.CATEGORY_GENERAL),
+        )
+    except Exception:
+        logger.exception('account.mailbox create_failed user_id=%s subject=%s', getattr(user, 'id', None), subject)
+        return None
+
+
 def _send_verification_email(request, user):
     if not user.email:
         logger.warning('register.verify_email skipped user=%s reason=no_email', user.username)
@@ -131,13 +163,21 @@ def _send_verification_email(request, user):
         recipient_list=[user.email],
         event_name='register.verify_email',
     )
+    _create_user_mailbox_message(
+        user,
+        subject=subject,
+        body=message,
+        category=UserMailboxMessage.CATEGORY_ACCOUNT,
+    )
+    _create_user_notification(
+        user,
+        title='Verify your email',
+        message='A verification link has been sent to your email address.',
+        level=UserNotification.LEVEL_INFO,
+    )
 
 
 def _send_login_security_notification(user, request):
-    if not user.email:
-        logger.warning('auth.login_alert skipped user=%s reason=no_email', user.username)
-        return
-
     ip = _get_client_ip(request)
     location = _lookup_location_by_ip(ip)
     device_name = _get_device_name(request)
@@ -154,11 +194,26 @@ def _send_login_security_notification(user, request):
         'If this was you, no action is needed.\n'
         'If this was NOT you, change your password immediately and review account activity.'
     )
-    _safe_send_email(
+    if user.email:
+        _safe_send_email(
+            subject=subject,
+            message=message,
+            recipient_list=[user.email],
+            event_name='auth.login_alert',
+        )
+    else:
+        logger.warning('auth.login_alert email skipped user=%s reason=no_email', user.username)
+    _create_user_mailbox_message(
+        user,
         subject=subject,
-        message=message,
-        recipient_list=[user.email],
-        event_name='auth.login_alert',
+        body=message,
+        category=UserMailboxMessage.CATEGORY_SECURITY,
+    )
+    _create_user_notification(
+        user,
+        title='New login detected',
+        message=f'New login from {location} ({ip}). If this was not you, change your password now.',
+        level=UserNotification.LEVEL_WARNING,
     )
 
 
@@ -174,18 +229,32 @@ def _send_order_created_notifications(order, contact_email=None):
         recipient_email = contact_email
 
     if recipient_email:
+        customer_message = (
+            f'Thank you for your order.\n\n'
+            f'Order Number: {order.order_number}\n'
+            f'Status: {order.status}\n'
+            f'Total: ${order.total}\n\n'
+            'We are processing your order and will notify you when payment is confirmed and the order advances.'
+        )
         _safe_send_email(
             subject=f'Order Received: {order.order_number}',
-            message=(
-                f'Thank you for your order.\n\n'
-                f'Order Number: {order.order_number}\n'
-                f'Status: {order.status}\n'
-                f'Total: ${order.total}\n\n'
-                'We are processing your order and will notify you when payment is confirmed and the order advances.'
-            ),
+            message=customer_message,
             recipient_list=[recipient_email],
             event_name='order.created.customer',
         )
+        if order.user_id:
+            _create_user_mailbox_message(
+                order.user,
+                subject=f'Order received: {order.order_number}',
+                body=customer_message,
+                category=UserMailboxMessage.CATEGORY_ORDER,
+            )
+            _create_user_notification(
+                order.user,
+                title='Order created',
+                message=f'Order {order.order_number} has been created and is currently {order.status}.',
+                level=UserNotification.LEVEL_INFO,
+            )
 
     ops_email = _contact_recipient()
     if ops_email:
@@ -206,17 +275,30 @@ def _send_order_created_notifications(order, contact_email=None):
 def _send_order_paid_notifications(order, provider='unknown'):
     recipient_email = order.user.email if order.user and order.user.email else ''
     if recipient_email:
+        customer_message = (
+            f'Payment for order {order.order_number} has been confirmed.\n\n'
+            f'Payment Provider: {provider}\n'
+            f'Current Status: {order.status}\n'
+            f'Total: ${order.total}\n\n'
+            'Thank you for shopping with De-Rukkies Collections.'
+        )
         _safe_send_email(
             subject=f'Payment Confirmed: {order.order_number}',
-            message=(
-                f'Payment for order {order.order_number} has been confirmed.\n\n'
-                f'Payment Provider: {provider}\n'
-                f'Current Status: {order.status}\n'
-                f'Total: ${order.total}\n\n'
-                'Thank you for shopping with De-Rukkies Collections.'
-            ),
+            message=customer_message,
             recipient_list=[recipient_email],
             event_name='order.paid.customer',
+        )
+        _create_user_mailbox_message(
+            order.user,
+            subject=f'Payment confirmed: {order.order_number}',
+            body=customer_message,
+            category=UserMailboxMessage.CATEGORY_PAYMENT,
+        )
+        _create_user_notification(
+            order.user,
+            title='Payment successful',
+            message=f'Payment for order {order.order_number} is confirmed.',
+            level=UserNotification.LEVEL_SUCCESS,
         )
 
     ops_email = _contact_recipient()
@@ -2295,6 +2377,18 @@ def verify_email_view(request, uidb64, token):
             user.is_active = True
             user.save(update_fields=['is_active'])
             logger.info('auth.verify activated user_id=%s username=%s ip=%s', user.id, user.username, client_ip)
+            _create_user_notification(
+                user,
+                title='Email verified',
+                message='Your account is now active. You can log in and continue shopping.',
+                level=UserNotification.LEVEL_SUCCESS,
+            )
+            _create_user_mailbox_message(
+                user,
+                subject='Welcome to De-Rukkies Collections',
+                body='Your email has been verified successfully. Your account is now active.',
+                category=UserMailboxMessage.CATEGORY_ACCOUNT,
+            )
         else:
             logger.info('auth.verify already_active user_id=%s username=%s ip=%s', user.id, user.username, client_ip)
         return redirect('/account?verified=1')
@@ -3048,3 +3142,83 @@ def user_address_detail(request, address_id):
 
     address.delete()
     return Response({'ok': True})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_notifications(request):
+    if not UserNotification.objects.filter(user=request.user).exists():
+        _create_user_notification(
+            request.user,
+            title='Welcome to your account',
+            message='You are all set. New account, order, and payment updates will appear here.',
+            level=UserNotification.LEVEL_INFO,
+        )
+    rows = UserNotification.objects.filter(user=request.user).order_by('-created_at')[:100]
+    unread_count = UserNotification.objects.filter(user=request.user, is_read=False).count()
+    logger.info('account.notifications list user_id=%s unread=%s', request.user.id, unread_count)
+    return Response({
+        'results': UserNotificationSerializer(rows, many=True).data,
+        'unread_count': unread_count,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def user_notification_mark_read(request, notification_id):
+    row = get_object_or_404(UserNotification, id=notification_id, user=request.user)
+    if not row.is_read:
+        row.is_read = True
+        row.read_at = timezone.now()
+        row.save(update_fields=['is_read', 'read_at', 'updated_at'])
+    logger.info('account.notifications mark_read user_id=%s notification_id=%s', request.user.id, row.id)
+    return Response({'ok': True})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def user_notification_mark_all_read(request):
+    now = timezone.now()
+    updated = UserNotification.objects.filter(user=request.user, is_read=False).update(is_read=True, read_at=now, updated_at=now)
+    logger.info('account.notifications mark_all_read user_id=%s updated=%s', request.user.id, updated)
+    return Response({'ok': True, 'updated': updated})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_mailbox(request):
+    if not UserMailboxMessage.objects.filter(user=request.user).exists():
+        _create_user_mailbox_message(
+            request.user,
+            subject='Welcome to De-Rukkies Collections',
+            body='This is your mailbox. Important account, order, payment, and security messages will be shown here.',
+            category=UserMailboxMessage.CATEGORY_ACCOUNT,
+        )
+    rows = UserMailboxMessage.objects.filter(user=request.user).order_by('-created_at')[:100]
+    unread_count = UserMailboxMessage.objects.filter(user=request.user, is_read=False).count()
+    logger.info('account.mailbox list user_id=%s unread=%s', request.user.id, unread_count)
+    return Response({
+        'results': UserMailboxMessageSerializer(rows, many=True).data,
+        'unread_count': unread_count,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def user_mailbox_mark_read(request, message_id):
+    row = get_object_or_404(UserMailboxMessage, id=message_id, user=request.user)
+    if not row.is_read:
+        row.is_read = True
+        row.read_at = timezone.now()
+        row.save(update_fields=['is_read', 'read_at', 'updated_at'])
+    logger.info('account.mailbox mark_read user_id=%s message_id=%s', request.user.id, row.id)
+    return Response({'ok': True})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def user_mailbox_mark_all_read(request):
+    now = timezone.now()
+    updated = UserMailboxMessage.objects.filter(user=request.user, is_read=False).update(is_read=True, read_at=now, updated_at=now)
+    logger.info('account.mailbox mark_all_read user_id=%s updated=%s', request.user.id, updated)
+    return Response({'ok': True, 'updated': updated})

@@ -14,6 +14,8 @@ from .models import (
 	ShippingMethod,
 	PaymentTransaction,
 	AssistantPolicy,
+	UserNotification,
+	UserMailboxMessage,
 )
 from django.conf import settings
 from unittest.mock import Mock, patch
@@ -386,6 +388,65 @@ class AddressCheckoutTests(TestCase):
 		)
 		self.assertEqual(resp.status_code, 400)
 		self.assertEqual(resp.json().get('error'), 'invalid_shipping_address_id')
+
+
+class AccountNotificationsMailboxTests(TestCase):
+	def setUp(self):
+		self.client = Client()
+		self.user = User.objects.create_user(
+			username='notify_user',
+			password='test12345',
+			email='notify@example.com',
+		)
+		self.client.force_login(self.user)
+		UserNotification.objects.create(
+			user=self.user,
+			title='Order created',
+			message='Order ABC123 created.',
+			level='info',
+		)
+		UserMailboxMessage.objects.create(
+			user=self.user,
+			subject='Welcome',
+			body='Welcome to De-Rukkies Collections.',
+			category='account',
+		)
+
+	def test_notifications_list_and_mark_read(self):
+		resp = self.client.get('/api/account/notifications/')
+		self.assertEqual(resp.status_code, 200)
+		body = resp.json()
+		self.assertIn('results', body)
+		self.assertEqual(len(body['results']), 1)
+		self.assertEqual(int(body.get('unread_count') or 0), 1)
+
+		row_id = body['results'][0]['id']
+		mark = self.client.post(f'/api/account/notifications/{row_id}/read/', {}, content_type='application/json')
+		self.assertEqual(mark.status_code, 200)
+		self.assertTrue(UserNotification.objects.get(id=row_id).is_read)
+
+	def test_mailbox_list_and_mark_all_read(self):
+		resp = self.client.get('/api/account/mailbox/')
+		self.assertEqual(resp.status_code, 200)
+		body = resp.json()
+		self.assertIn('results', body)
+		self.assertEqual(len(body['results']), 1)
+		self.assertEqual(int(body.get('unread_count') or 0), 1)
+
+		mark_all = self.client.post('/api/account/mailbox/mark-all-read/', {}, content_type='application/json')
+		self.assertEqual(mark_all.status_code, 200)
+		self.assertEqual(UserMailboxMessage.objects.filter(user=self.user, is_read=False).count(), 0)
+
+	def test_login_creates_security_notification_and_mailbox(self):
+		self.client.post('/api/auth/logout/', {}, content_type='application/json')
+		resp = self.client.post(
+			'/api/auth/login/',
+			{'username': self.user.username, 'password': 'test12345'},
+			content_type='application/json',
+		)
+		self.assertEqual(resp.status_code, 200)
+		self.assertTrue(UserNotification.objects.filter(user=self.user, title='New login detected').exists())
+		self.assertTrue(UserMailboxMessage.objects.filter(user=self.user, category='security').exists())
 
 
 class FlutterwavePaymentConfigTests(TestCase):

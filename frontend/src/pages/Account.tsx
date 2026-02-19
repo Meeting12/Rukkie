@@ -8,6 +8,8 @@ import {
   MapPin,
   CreditCard,
   Settings,
+  Bell,
+  Mail,
   LogOut,
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
@@ -20,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 
-type AccountSection = "profile" | "orders" | "wishlist" | "addresses" | "payments" | "settings";
+type AccountSection = "profile" | "orders" | "wishlist" | "addresses" | "payments" | "notifications" | "mailbox" | "settings";
 type PaymentRecord = {
   id: number;
   provider: string;
@@ -52,6 +54,26 @@ type AddressRecord = {
   phone?: string;
 };
 
+type NotificationRecord = {
+  id: number;
+  title: string;
+  message: string;
+  level: "info" | "success" | "warning" | "error";
+  is_read: boolean;
+  read_at?: string | null;
+  created_at: string;
+};
+
+type MailboxRecord = {
+  id: number;
+  subject: string;
+  body: string;
+  category: string;
+  is_read: boolean;
+  read_at?: string | null;
+  created_at: string;
+};
+
 const Account = () => {
   const location = useLocation();
   const { isAuthenticated, username, login, logout, lastError } = useAuth();
@@ -69,6 +91,12 @@ const Account = () => {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [addresses, setAddresses] = useState<AddressRecord[]>([]);
   const [addressesLoading, setAddressesLoading] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [notificationsUnread, setNotificationsUnread] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [mailbox, setMailbox] = useState<MailboxRecord[]>([]);
+  const [mailboxUnread, setMailboxUnread] = useState(0);
+  const [mailboxLoading, setMailboxLoading] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<number | null>(null);
   const [addressForm, setAddressForm] = useState({
     full_name: "",
@@ -105,6 +133,34 @@ const Account = () => {
     }
   };
 
+  const loadNotifications = async () => {
+    setNotificationsLoading(true);
+    try {
+      const data = await fetchJSON("/api/account/notifications/");
+      setNotifications(Array.isArray(data?.results) ? data.results : []);
+      setNotificationsUnread(Number(data?.unread_count || 0));
+    } catch {
+      setNotifications([]);
+      setNotificationsUnread(0);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  const loadMailbox = async () => {
+    setMailboxLoading(true);
+    try {
+      const data = await fetchJSON("/api/account/mailbox/");
+      setMailbox(Array.isArray(data?.results) ? data.results : []);
+      setMailboxUnread(Number(data?.unread_count || 0));
+    } catch {
+      setMailbox([]);
+      setMailboxUnread(0);
+    } finally {
+      setMailboxLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!isAuthenticated) return;
     if (activeSection === "orders" || activeSection === "payments") {
@@ -112,6 +168,12 @@ const Account = () => {
     }
     if (activeSection === "addresses") {
       loadAddresses();
+    }
+    if (activeSection === "notifications") {
+      loadNotifications();
+    }
+    if (activeSection === "mailbox") {
+      loadMailbox();
     }
   }, [isAuthenticated, activeSection]);
 
@@ -133,6 +195,8 @@ const Account = () => {
     { id: "wishlist", icon: Heart, label: "Wishlist" },
     { id: "addresses", icon: MapPin, label: "Addresses" },
     { id: "payments", icon: CreditCard, label: "Payment Methods" },
+    { id: "notifications", icon: Bell, label: notificationsUnread > 0 ? `Notifications (${notificationsUnread})` : "Notifications" },
+    { id: "mailbox", icon: Mail, label: mailboxUnread > 0 ? `Mailbox (${mailboxUnread})` : "Mailbox" },
     { id: "settings", icon: Settings, label: "Settings" },
   ];
 
@@ -331,6 +395,8 @@ const Account = () => {
     wishlist: { title: "My Wishlist", description: "Products you saved for later" },
     addresses: { title: "Saved Addresses", description: "Manage shipping and billing addresses" },
     payments: { title: "Payment Methods", description: "Manage your saved payment options" },
+    notifications: { title: "Notifications", description: "Stay updated with account and order alerts" },
+    mailbox: { title: "Mailbox", description: "Read your account and order messages" },
     settings: { title: "Account Settings", description: "Update account preferences and security" },
   };
 
@@ -407,6 +473,46 @@ const Account = () => {
       loadAddresses();
     } catch (err: any) {
       toast.error(err?.message || "Unable to delete address.");
+    }
+  };
+
+  const markNotificationRead = async (notificationId: number) => {
+    try {
+      await fetchJSON(`/api/account/notifications/${notificationId}/read/`, { method: "POST" });
+      setNotifications((prev) => prev.map((row) => (row.id === notificationId ? { ...row, is_read: true } : row)));
+      setNotificationsUnread((prev) => Math.max(0, prev - 1));
+    } catch {
+      toast.error("Unable to update notification.");
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await fetchJSON("/api/account/notifications/mark-all-read/", { method: "POST" });
+      setNotifications((prev) => prev.map((row) => ({ ...row, is_read: true })));
+      setNotificationsUnread(0);
+    } catch {
+      toast.error("Unable to update notifications.");
+    }
+  };
+
+  const markMailboxRead = async (messageId: number) => {
+    try {
+      await fetchJSON(`/api/account/mailbox/${messageId}/read/`, { method: "POST" });
+      setMailbox((prev) => prev.map((row) => (row.id === messageId ? { ...row, is_read: true } : row)));
+      setMailboxUnread((prev) => Math.max(0, prev - 1));
+    } catch {
+      toast.error("Unable to update mailbox message.");
+    }
+  };
+
+  const markAllMailboxRead = async () => {
+    try {
+      await fetchJSON("/api/account/mailbox/mark-all-read/", { method: "POST" });
+      setMailbox((prev) => prev.map((row) => ({ ...row, is_read: true })));
+      setMailboxUnread(0);
+    } catch {
+      toast.error("Unable to update mailbox.");
     }
   };
 
@@ -630,6 +736,76 @@ const Account = () => {
                 </p>
               </div>
             ))}
+        </div>
+      );
+    }
+
+    if (activeSection === "notifications") {
+      if (notificationsLoading) {
+        return <div className="py-6 text-sm text-muted-foreground">Loading notifications...</div>;
+      }
+      if (!notifications.length) {
+        return <div className="py-6 text-sm text-muted-foreground">No notifications yet.</div>;
+      }
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-end">
+            <Button type="button" variant="outline" size="sm" onClick={markAllNotificationsRead}>
+              Mark all as read
+            </Button>
+          </div>
+          {notifications.map((row) => (
+            <div key={row.id} className={`rounded-lg border p-4 ${row.is_read ? "border-border" : "border-primary/40 bg-primary/5"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">{row.title}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{row.message}</p>
+                  <p className="text-xs text-muted-foreground mt-2">{new Date(row.created_at).toLocaleString()}</p>
+                </div>
+                {!row.is_read && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => markNotificationRead(row.id)}>
+                    Mark read
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (activeSection === "mailbox") {
+      if (mailboxLoading) {
+        return <div className="py-6 text-sm text-muted-foreground">Loading mailbox...</div>;
+      }
+      if (!mailbox.length) {
+        return <div className="py-6 text-sm text-muted-foreground">No mailbox messages yet.</div>;
+      }
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-end">
+            <Button type="button" variant="outline" size="sm" onClick={markAllMailboxRead}>
+              Mark all as read
+            </Button>
+          </div>
+          {mailbox.map((row) => (
+            <div key={row.id} className={`rounded-lg border p-4 ${row.is_read ? "border-border" : "border-primary/40 bg-primary/5"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">{row.subject}</p>
+                  <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{row.body}</p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {new Date(row.created_at).toLocaleString()} | {row.category}
+                  </p>
+                </div>
+                {!row.is_read && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => markMailboxRead(row.id)}>
+                    Mark read
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       );
     }

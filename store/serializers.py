@@ -3,7 +3,24 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 import os
 from urllib.parse import urlparse, quote
-from .models import Product, ProductImage, Category, HomeHeroSlide, Cart, CartItem, Order, OrderItem, ShippingMethod, Address, Wishlist, Page, PaymentTransaction, ProductReview
+from .models import (
+    Product,
+    ProductImage,
+    Category,
+    HomeHeroSlide,
+    Cart,
+    CartItem,
+    Order,
+    OrderItem,
+    ShippingMethod,
+    Address,
+    Wishlist,
+    Page,
+    PaymentTransaction,
+    ProductReview,
+    UserNotification,
+    UserMailboxMessage,
+)
 
 User = get_user_model()
 
@@ -263,3 +280,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'date_joined']
+
+
+class UserNotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserNotification
+        fields = ['id', 'title', 'message', 'level', 'is_read', 'read_at', 'created_at', 'updated_at']
+
+
+class UserMailboxMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserMailboxMessage
+        fields = ['id', 'subject', 'body', 'category', 'is_read', 'read_at', 'created_at', 'updated_at']

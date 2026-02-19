@@ -28,7 +28,7 @@ import uuid
 from .models import (
 	Category, Product, ProductImage, Cart, CartItem,
 	HomeHeroSlide, PendingMetadata, ShippingMethod, Address, Order, OrderItem, PaymentTransaction, ProductReview,
-	Wishlist, Page, ContactMessage, NewsletterSubscription, AssistantPolicy
+	Wishlist, Page, ContactMessage, NewsletterSubscription, AssistantPolicy, UserNotification, UserMailboxMessage
 )
 from .media_layout import normalize_slug, ensure_category_media_structure, category_media_paths
 from .tasks import analyze_and_apply_image
@@ -1039,3 +1039,19 @@ class AssistantPolicyAdmin(admin.ModelAdmin):
 	list_display = ('key', 'title', 'is_active', 'updated_at')
 	list_filter = ('is_active',)
 	search_fields = ('key', 'title', 'content')
+
+
+@admin.register(UserNotification)
+class UserNotificationAdmin(admin.ModelAdmin):
+	list_display = ('user', 'title', 'level', 'is_read', 'created_at', 'read_at')
+	list_filter = ('level', 'is_read', 'created_at')
+	search_fields = ('user__username', 'title', 'message')
+	readonly_fields = ('created_at', 'updated_at', 'read_at')
+
+
+@admin.register(UserMailboxMessage)
+class UserMailboxMessageAdmin(admin.ModelAdmin):
+	list_display = ('user', 'subject', 'category', 'is_read', 'created_at', 'read_at')
+	list_filter = ('category', 'is_read', 'created_at')
+	search_fields = ('user__username', 'subject', 'body')
+	readonly_fields = ('created_at', 'updated_at', 'read_at')
