@@ -681,6 +681,36 @@ class ProductCSVImageImportTests(TestCase):
 		self.assertEqual(product.images.count(), 1)
 		self.assertTrue(product.images.first().image.name.startswith('products/'))
 
+	def test_csv_import_long_slug_generates_db_safe_image_path(self):
+		buffer = io.BytesIO()
+		with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+			zf.writestr('hairs_images/sample.jpg', b'fake-jpg-content')
+		buffer.seek(0)
+
+		long_slug = 'ultra-long-product-' + ('very-long-segment-' * 20)
+		csv_file = SimpleUploadedFile(
+			'products.csv',
+			(
+				'name,slug,price,stock,categories,image\n'
+				f'Long Name Product,{long_slug},59.99,6,Fashion,hairs_images\\sample.jpg\n'
+			).encode('utf-8'),
+			content_type='text/csv',
+		)
+		archive_file = SimpleUploadedFile('images.zip', buffer.read(), content_type='application/zip')
+
+		resp = self.client.post(
+			reverse('admin:store_product_import_csv'),
+			{'csv_file': csv_file, 'image_archive': archive_file},
+			follow=True,
+		)
+		self.assertEqual(resp.status_code, 200)
+
+		product = Product.objects.get(slug=long_slug)
+		self.assertEqual(product.images.count(), 1)
+		image_name = product.images.first().image.name
+		max_len = ProductImage._meta.get_field('image').max_length
+		self.assertLessEqual(len(image_name), max_len)
+
 
 class CategoryMediaStructureTests(TestCase):
 	def setUp(self):

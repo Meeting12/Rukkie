@@ -180,14 +180,40 @@ def _summarize_exception(exc, max_len=140):
 	return text[:max_len]
 
 
-def _save_product_image_from_bytes(product, content, order, ext='.jpg'):
-	if not content:
-		raise ValueError('empty_image_content')
+def _build_product_image_filename(product, ext='.jpg'):
+	"""
+	Build a filename that always fits ProductImage.image max_length (DB-safe).
+	The DB column stores the full relative path (including upload_to prefix).
+	"""
 	ext = (ext or '').lower()
 	if ext not in IMAGE_EXTENSIONS:
 		ext = '.jpg'
+
+	field = ProductImage._meta.get_field('image')
+	max_len = int(getattr(field, 'max_length', 100) or 100)
+	upload_to = getattr(field, 'upload_to', '') or ''
+	if isinstance(upload_to, str):
+		upload_prefix = upload_to.strip()
+		if upload_prefix and not upload_prefix.endswith('/'):
+			upload_prefix = f'{upload_prefix}/'
+	else:
+		upload_prefix = ''
+
+	# <upload_prefix><base>-<10hex><ext>
+	reserved = len(upload_prefix) + 1 + 10 + len(ext)
+	max_base_len = max(8, max_len - reserved)
 	base = slugify(product.slug or product.name) or 'product'
-	filename = f'{base}-{uuid.uuid4().hex[:10]}{ext}'
+	if len(base) > max_base_len:
+		base = base[:max_base_len].rstrip('-_')
+	if not base:
+		base = 'product'
+	return f'{base}-{uuid.uuid4().hex[:10]}{ext}'
+
+
+def _save_product_image_from_bytes(product, content, order, ext='.jpg'):
+	if not content:
+		raise ValueError('empty_image_content')
+	filename = _build_product_image_filename(product, ext)
 	image = ProductImage(product=product, alt=product.name, order=order)
 	image.image.save(filename, ContentFile(content), save=False)
 	image.save()
