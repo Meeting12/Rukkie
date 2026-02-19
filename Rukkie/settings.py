@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 from urllib.parse import urlparse
 from dotenv import load_dotenv, dotenv_values
 from django.core.exceptions import ImproperlyConfigured
@@ -186,7 +187,9 @@ MEDIA_ROOT = BASE_DIR / 'media'
 if USE_CLOUDINARY_MEDIA:
     # Prefer CLOUDINARY_URL (cloudinary://<api_key>:<api_secret>@<cloud_name>)
     # and fall back to explicit CLOUDINARY_* variables.
-    cloudinary_url = (os.environ.get('CLOUDINARY_URL') or '').strip()
+    cloudinary_url = (os.environ.get('CLOUDINARY_URL') or '').strip().strip('"').strip("'")
+    if cloudinary_url.lower().startswith('cloudinary_url='):
+        cloudinary_url = cloudinary_url.split('=', 1)[1].strip().strip('"').strip("'")
     cloudinary_cloud_name = ''
     cloudinary_api_key = ''
     cloudinary_api_secret = ''
@@ -207,7 +210,8 @@ if USE_CLOUDINARY_MEDIA:
         cloudinary_api_key = os.environ.get('CLOUDINARY_API_KEY', '').strip()
     if not cloudinary_api_secret:
         cloudinary_api_secret = os.environ.get('CLOUDINARY_API_SECRET', '').strip()
-    if not (cloudinary_cloud_name and cloudinary_api_key and cloudinary_api_secret) and not DEBUG:
+    is_collectstatic = any(arg == 'collectstatic' for arg in sys.argv[1:])
+    if not (cloudinary_cloud_name and cloudinary_api_key and cloudinary_api_secret) and not DEBUG and not is_collectstatic:
         raise ImproperlyConfigured(
             'Cloudinary media is enabled but credentials are missing. '
             'Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET.'
