@@ -1,5 +1,6 @@
 from django.contrib import admin
 import csv
+import io
 import mimetypes
 import os
 import re
@@ -173,6 +174,60 @@ def _guess_image_extension(source_url, content_type):
 	return '.jpg'
 
 
+def _summarize_exception(exc, max_len=140):
+	text = f'{exc.__class__.__name__}: {exc}'
+	text = re.sub(r'\s+', ' ', str(text)).strip()
+	return text[:max_len]
+
+
+def _save_product_image_from_bytes(product, content, order, ext='.jpg'):
+	if not content:
+		raise ValueError('empty_image_content')
+	ext = (ext or '').lower()
+	if ext not in IMAGE_EXTENSIONS:
+		ext = '.jpg'
+	base = slugify(product.slug or product.name) or 'product'
+	filename = f'{base}-{uuid.uuid4().hex[:10]}{ext}'
+	image = ProductImage(product=product, alt=product.name, order=order)
+	image.image.save(filename, ContentFile(content), save=False)
+	image.save()
+	return image
+
+
+def _try_normalize_image_content(content, fallback_ext='.jpg'):
+	"""
+	Best-effort normalization for strict remote storages (e.g. Cloudinary).
+	Returns (normalized_content, normalized_extension) or (original_content, fallback_ext).
+	"""
+	fallback = (fallback_ext or '.jpg').lower()
+	if fallback not in IMAGE_EXTENSIONS:
+		fallback = '.jpg'
+	try:
+		from PIL import Image, ImageOps, ImageFile
+		ImageFile.LOAD_TRUNCATED_IMAGES = True
+		with Image.open(io.BytesIO(content)) as img:
+			img = ImageOps.exif_transpose(img)
+			has_alpha = bool(
+				img.mode in ('RGBA', 'LA')
+				or ('transparency' in getattr(img, 'info', {}))
+			)
+			out = io.BytesIO()
+			if has_alpha:
+				img = img.convert('RGBA')
+				img.save(out, format='PNG', optimize=True)
+				normalized_ext = '.png'
+			else:
+				img = img.convert('RGB')
+				img.save(out, format='JPEG', quality=90, optimize=True)
+				normalized_ext = '.jpg'
+			data = out.getvalue()
+			if data:
+				return data, normalized_ext
+	except Exception:
+		return content, fallback
+	return content, fallback
+
+
 def _create_product_image_from_url(product, image_url, order):
 	"""Download an image URL and store it under products/."""
 	response = requests.get(
@@ -186,12 +241,7 @@ def _create_product_image_from_url(product, image_url, order):
 	if not content:
 		raise ValueError('empty image response')
 	ext = _guess_image_extension(image_url, response.headers.get('Content-Type', ''))
-	base = slugify(product.slug or product.name) or 'product'
-	filename = f'{base}-{uuid.uuid4().hex[:10]}{ext}'
-	image = ProductImage(product=product, alt=product.name, order=order)
-	image.image.save(filename, ContentFile(content), save=False)
-	image.save()
-	return image
+	return _save_product_image_from_bytes(product, content, order, ext)
 
 
 def _create_product_image_from_local_path(product, file_path, order):
@@ -201,14 +251,23 @@ def _create_product_image_from_local_path(product, file_path, order):
 	if not content:
 		raise ValueError('empty_local_file')
 	ext = os.path.splitext(file_path)[1].lower()
-	if ext not in IMAGE_EXTENSIONS:
-		ext = '.jpg'
-	base = slugify(product.slug or product.name) or 'product'
-	filename = f'{base}-{uuid.uuid4().hex[:10]}{ext}'
-	image = ProductImage(product=product, alt=product.name, order=order)
-	image.image.save(filename, ContentFile(content), save=False)
-	image.save()
-	return image
+	try:
+		return _save_product_image_from_bytes(product, content, order, ext)
+	except Exception as primary_exc:
+		# Retry with normalized bytes for strict storage backends.
+		norm_content, norm_ext = _try_normalize_image_content(content, fallback_ext=ext)
+		normalized_original_ext = (ext or '').lower()
+		if normalized_original_ext not in IMAGE_EXTENSIONS:
+			normalized_original_ext = '.jpg'
+		if norm_content == content and norm_ext == normalized_original_ext:
+			raise
+		try:
+			return _save_product_image_from_bytes(product, norm_content, order, norm_ext)
+		except Exception as normalized_exc:
+			raise ValueError(
+				f'local_image_save_failed primary={_summarize_exception(primary_exc)}; '
+				f'normalized={_summarize_exception(normalized_exc)}'
+			) from normalized_exc
 
 
 def _create_product_image_from_data_uri(product, data_uri, order):
@@ -223,12 +282,7 @@ def _create_product_image_from_data_uri(product, data_uri, order):
 	content = base64.b64decode(encoded)
 	if not content:
 		raise ValueError('empty_data_uri')
-	base = slugify(product.slug or product.name) or 'product'
-	filename = f'{base}-{uuid.uuid4().hex[:10]}{ext}'
-	image = ProductImage(product=product, alt=product.name, order=order)
-	image.image.save(filename, ContentFile(content), save=False)
-	image.save()
-	return image
+	return _save_product_image_from_bytes(product, content, order, ext)
 
 
 def _attach_csv_images_to_product(product, image_sources, archive_index=None, category_slugs=None):
@@ -260,11 +314,11 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 				_create_product_image_from_data_uri(product, source, order)
 				created += 1
 				order += 1
-			except Exception:
+			except Exception as exc:
 				failed += 1
 				fail_reason_counts['data_uri_invalid'] += 1
 				if len(failed_samples) < 5:
-					failed_samples.append(f'{source[:72]}... (invalid data URI)')
+					failed_samples.append(f'{source[:72]}... (invalid data URI: {_summarize_exception(exc, 80)})')
 				logger.exception('csv.import image_data_uri_failed product_id=%s', product.id)
 			continue
 
@@ -291,11 +345,11 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 				_create_product_image_from_url(product, source, order)
 				created += 1
 				order += 1
-			except Exception:
+			except Exception as exc:
 				failed += 1
 				fail_reason_counts['download_failed'] += 1
 				if len(failed_samples) < 5:
-					failed_samples.append(f'{source[:120]} (download failed)')
+					failed_samples.append(f'{source[:120]} (download failed: {_summarize_exception(exc, 80)})')
 				logger.exception('csv.import image_download_failed product_id=%s source=%s', product.id, source)
 			continue
 
@@ -308,11 +362,11 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 					created += 1
 					order += 1
 					continue
-				except Exception:
+				except Exception as exc:
 					failed += 1
 					fail_reason_counts['archive_copy_failed'] += 1
 					if len(failed_samples) < 5:
-						failed_samples.append(f'{source[:120]} (archive copy failed)')
+						failed_samples.append(f'{source[:120]} (archive copy failed: {_summarize_exception(exc, 80)})')
 					logger.exception('csv.import image_archive_copy_failed product_id=%s source=%s', product.id, source)
 					continue
 
@@ -323,11 +377,11 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 					created += 1
 					order += 1
 					continue
-				except Exception:
+				except Exception as exc:
 					failed += 1
 					fail_reason_counts['local_copy_failed'] += 1
 					if len(failed_samples) < 5:
-						failed_samples.append(f'{source[:120]} (local copy failed)')
+						failed_samples.append(f'{source[:120]} (local copy failed: {_summarize_exception(exc, 80)})')
 					logger.exception('csv.import image_local_copy_failed product_id=%s source=%s', product.id, source)
 					continue
 
