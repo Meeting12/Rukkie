@@ -13,6 +13,13 @@ interface Message {
   timestamp: Date;
 }
 
+interface AssistantResponse {
+  reply?: string;
+  suggestions?: string[];
+  intent?: string;
+  session_id?: string;
+}
+
 export const ChatBot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -25,6 +32,8 @@ export const ChatBot = () => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const viewportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,12 +46,13 @@ export const ChatBot = () => {
     return () => window.cancelAnimationFrame(id);
   }, [messages, isOpen]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  const submitMessage = async (rawMessage: string) => {
+    const trimmedMessage = rawMessage.trim();
+    if (!trimmedMessage || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: input.trim(),
+      content: trimmedMessage,
       role: "user",
       timestamp: new Date(),
     };
@@ -50,16 +60,28 @@ export const ChatBot = () => {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setSuggestions([]);
 
     try {
-      const data = await fetchJSON("/api/chat/", {
+      const data = (await fetchJSON("/api/assistant/chat/", {
         method: "POST",
-        body: JSON.stringify({ message: userMessage.content }),
-      });
+        credentials: "include",
+        body: JSON.stringify({
+          message: userMessage.content,
+          session_id: sessionId,
+          context: { message_count: messages.length + 1 },
+        }),
+      })) as AssistantResponse;
       const reply =
         typeof data.reply === "string" && data.reply.trim()
           ? data.reply
           : "I could not process that. Please try again.";
+      if (typeof data.session_id === "string" && data.session_id.trim()) {
+        setSessionId(data.session_id.trim());
+      }
+      if (Array.isArray(data.suggestions)) {
+        setSuggestions(data.suggestions.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 5));
+      }
 
       const assistantMessage: Message = {
         id: `${Date.now()}-assistant`,
@@ -69,6 +91,7 @@ export const ChatBot = () => {
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch {
+      setSuggestions([]);
       const assistantMessage: Message = {
         id: `${Date.now()}-assistant-error`,
         content: "I am currently unavailable. Please try again in a moment.",
@@ -79,6 +102,15 @@ export const ChatBot = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSend = async () => {
+    await submitMessage(input);
+  };
+
+  const handleSuggestionClick = async (suggestion: string) => {
+    if (isLoading) return;
+    await submitMessage(suggestion);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -178,6 +210,25 @@ export const ChatBot = () => {
             )}
           </div>
         </ScrollArea>
+
+        {!isLoading && suggestions.length > 0 && (
+          <div className="border-t px-4 pt-3">
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((suggestion) => (
+                <Button
+                  key={suggestion}
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 rounded-full px-3 text-xs"
+                  onClick={() => handleSuggestionClick(suggestion)}
+                >
+                  {suggestion}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Input */}
         <div className="border-t p-4">

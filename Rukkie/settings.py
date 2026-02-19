@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+from urllib.parse import urlparse
 from dotenv import load_dotenv, dotenv_values
 from django.core.exceptions import ImproperlyConfigured
 import dj_database_url
@@ -45,6 +46,10 @@ if DEBUG:
 else:
     ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '.onrender.com').split(',') if h.strip()]
 
+# Media backend toggle.
+# Set USE_CLOUDINARY_MEDIA=True in production to store uploads in Cloudinary.
+USE_CLOUDINARY_MEDIA = str(os.environ.get('USE_CLOUDINARY_MEDIA', 'False')).strip().lower() in ('1', 'true', 'yes', 'on')
+
 
 # Application definition
 
@@ -63,6 +68,11 @@ INSTALLED_APPS += [
     'rest_framework',
     'store',
 ]
+if USE_CLOUDINARY_MEDIA:
+    INSTALLED_APPS += [
+        'cloudinary_storage',
+        'cloudinary',
+    ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -172,8 +182,54 @@ STATICFILES_DIRS = [
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media (user-uploaded) files
-MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+if USE_CLOUDINARY_MEDIA:
+    # Prefer CLOUDINARY_URL (cloudinary://<api_key>:<api_secret>@<cloud_name>)
+    # and fall back to explicit CLOUDINARY_* variables.
+    cloudinary_url = (os.environ.get('CLOUDINARY_URL') or '').strip()
+    cloudinary_cloud_name = ''
+    cloudinary_api_key = ''
+    cloudinary_api_secret = ''
+    if cloudinary_url:
+        try:
+            parsed = urlparse(cloudinary_url)
+            if parsed.scheme == 'cloudinary':
+                cloudinary_cloud_name = (parsed.hostname or '').strip()
+                cloudinary_api_key = (parsed.username or '').strip()
+                cloudinary_api_secret = (parsed.password or '').strip()
+        except Exception:
+            cloudinary_cloud_name = ''
+            cloudinary_api_key = ''
+            cloudinary_api_secret = ''
+    if not cloudinary_cloud_name:
+        cloudinary_cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '').strip()
+    if not cloudinary_api_key:
+        cloudinary_api_key = os.environ.get('CLOUDINARY_API_KEY', '').strip()
+    if not cloudinary_api_secret:
+        cloudinary_api_secret = os.environ.get('CLOUDINARY_API_SECRET', '').strip()
+    if not (cloudinary_cloud_name and cloudinary_api_key and cloudinary_api_secret) and not DEBUG:
+        raise ImproperlyConfigured(
+            'Cloudinary media is enabled but credentials are missing. '
+            'Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET.'
+        )
+
+    CLOUDINARY_STORAGE = {
+        'CLOUD_NAME': cloudinary_cloud_name,
+        'API_KEY': cloudinary_api_key,
+        'API_SECRET': cloudinary_api_secret,
+        'SECURE': str(os.environ.get('CLOUDINARY_SECURE', 'True')).strip().lower() in ('1', 'true', 'yes', 'on'),
+    }
+    MEDIA_URL = f"https://res.cloudinary.com/{cloudinary_cloud_name}/" if cloudinary_cloud_name else '/media/'
+    STORAGES = {
+        'default': {'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage'},
+        'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+    }
+else:
+    MEDIA_URL = '/media/'
+    STORAGES = {
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+    }
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

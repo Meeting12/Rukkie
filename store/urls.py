@@ -42,6 +42,7 @@ from .views import (
     flutterwave_webhook,
     paypal_webhook,
     chat_assistant,
+    assistant_chat,
     verify_email_view,
     contact_submit,
     newsletter_subscribe,
@@ -103,6 +104,7 @@ urlpatterns = [
     path('newsletter/subscribe/', newsletter_subscribe, name='newsletter-subscribe'),
     # Chat assistant
     path('chat/', chat_assistant, name='chat-assistant'),
+    path('assistant/chat/', assistant_chat, name='assistant-chat'),
     # Product by slug helper
     path('products/slug/<slug:slug>/', product_by_slug, name='product-by-slug'),
     path('products/slug/<slug:slug>/reviews/', product_reviews, name='product-reviews'),

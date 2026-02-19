@@ -3,7 +3,18 @@ from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.utils import override_settings
 from django.core.cache import cache
-from .models import Product, ProductImage, Cart, CartItem, Order, OrderItem
+from .models import (
+	Product,
+	ProductImage,
+	Cart,
+	CartItem,
+	Order,
+	OrderItem,
+	Category,
+	ShippingMethod,
+	PaymentTransaction,
+	AssistantPolicy,
+)
 from django.conf import settings
 from unittest.mock import Mock, patch
 from django.contrib.auth.models import User
@@ -179,6 +190,84 @@ class ChatAssistantTests(TestCase):
 		self.assertEqual(resp.status_code, 200)
 		self.assertIn('reply', resp.json())
 		self.assertIn('Whitening Soap', resp.json()['reply'])
+
+
+class AssistantChatEndpointTests(TestCase):
+	def setUp(self):
+		self.client = Client()
+		self.category = Category.objects.create(name='Skincare', slug='skincare', is_active=True)
+		self.product = Product.objects.create(name='Glow Soap', slug='glow-soap', price='15.00', stock=7, is_active=True)
+		self.product.categories.add(self.category)
+		ShippingMethod.objects.create(name='Standard', price='5.00', delivery_days='3-5 days', active=True)
+		self.order = Order.objects.create(total='15.00')
+		OrderItem.objects.create(order=self.order, product=self.product, quantity=1, price='15.00')
+		PaymentTransaction.objects.create(
+			order=self.order,
+			provider='stripe',
+			provider_transaction_id='txn-assistant-1',
+			amount='15.00',
+			status='succeeded',
+			success=True,
+		)
+		AssistantPolicy.objects.update_or_create(
+			key='shipping',
+			defaults={'title': 'Shipping Policy', 'content': 'Shipping policy for tests.', 'is_active': True},
+		)
+		AssistantPolicy.objects.update_or_create(
+			key='returns',
+			defaults={'title': 'Returns Policy', 'content': 'Returns policy for tests.', 'is_active': True},
+		)
+		AssistantPolicy.objects.update_or_create(
+			key='payment',
+			defaults={'title': 'Payment Methods', 'content': 'Payment policy for tests.', 'is_active': True},
+		)
+
+	def _ask(self, message, **extra):
+		payload = {'message': message, 'session_id': extra.get('session_id'), 'context': extra.get('context')}
+		return self.client.post('/api/assistant/chat/', payload, content_type='application/json')
+
+	def test_shipping_intent_uses_policy(self):
+		resp = self._ask('Tell me about shipping options')
+		self.assertEqual(resp.status_code, 200)
+		body = resp.json()
+		self.assertEqual(body.get('intent'), 'shipping')
+		self.assertIn('Shipping policy for tests.', body.get('reply', ''))
+		self.assertTrue(body.get('session_id'))
+		self.assertTrue(isinstance(body.get('suggestions'), list))
+
+	def test_payment_intent_reports_available_providers(self):
+		settings.STRIPE_SECRET_KEY = 'sk_test_x'
+		settings.STRIPE_PUBLISHABLE_KEY = 'pk_test_x'
+		settings.FLUTTERWAVE_SECRET_KEY = 'FLWSECK_TEST-abc-X'
+		settings.PAYPAL_CLIENT_ID = 'paypal_client'
+		settings.PAYPAL_SECRET = 'paypal_secret'
+		resp = self._ask('What payment methods do you support?')
+		self.assertEqual(resp.status_code, 200)
+		body = resp.json()
+		self.assertEqual(body.get('intent'), 'payment')
+		self.assertIn('Stripe', body.get('reply', ''))
+
+	def test_returns_intent_uses_policy(self):
+		resp = self._ask('I need a refund for my order')
+		self.assertEqual(resp.status_code, 200)
+		body = resp.json()
+		self.assertEqual(body.get('intent'), 'returns')
+		self.assertIn('Returns policy for tests.', body.get('reply', ''))
+
+	def test_product_search_returns_products(self):
+		resp = self._ask('find glow soap')
+		self.assertEqual(resp.status_code, 200)
+		body = resp.json()
+		self.assertEqual(body.get('intent'), 'product_search')
+		self.assertIn('Glow Soap', body.get('reply', ''))
+		self.assertIn('$15.00', body.get('reply', ''))
+
+	def test_order_tracking_with_order_number(self):
+		resp = self._ask(f'track order {self.order.order_number}')
+		self.assertEqual(resp.status_code, 200)
+		body = resp.json()
+		self.assertEqual(body.get('intent'), 'order_tracking')
+		self.assertIn(self.order.order_number, body.get('reply', ''))
 
 
 class PublicEndpointRateLimitTests(TestCase):

@@ -256,6 +256,20 @@ class Page(models.Model):
 		return self.title
 
 
+class AssistantPolicy(models.Model):
+	key = models.CharField(max_length=80, unique=True)
+	title = models.CharField(max_length=200)
+	content = models.TextField()
+	is_active = models.BooleanField(default=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		ordering = ['key']
+
+	def __str__(self):
+		return f"{self.title} ({self.key})"
+
+
 class PendingMetadata(models.Model):
 	product = models.ForeignKey(Product, related_name='pending_metadata', on_delete=models.CASCADE)
 	metadata = models.JSONField()

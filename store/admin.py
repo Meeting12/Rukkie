@@ -27,7 +27,7 @@ import uuid
 from .models import (
 	Category, Product, ProductImage, Cart, CartItem,
 	HomeHeroSlide, PendingMetadata, ShippingMethod, Address, Order, OrderItem, PaymentTransaction, ProductReview,
-	Wishlist, Page, ContactMessage, NewsletterSubscription
+	Wishlist, Page, ContactMessage, NewsletterSubscription, AssistantPolicy
 )
 from .media_layout import normalize_slug, ensure_category_media_structure, category_media_paths
 from .tasks import analyze_and_apply_image
@@ -234,12 +234,19 @@ def _create_product_image_from_data_uri(product, data_uri, order):
 def _attach_csv_images_to_product(product, image_sources, archive_index=None, category_slugs=None):
 	"""
 	Attach images from CSV sources.
-	Returns (created_count, failed_count, skipped_existing_count, failed_samples).
+	Returns (created_count, failed_count, skipped_existing_count, failed_samples, fail_reason_counts).
 	"""
 	created = 0
 	failed = 0
 	skipped_existing = 0
 	failed_samples = []
+	fail_reason_counts = {
+		'data_uri_invalid': 0,
+		'download_failed': 0,
+		'archive_copy_failed': 0,
+		'local_copy_failed': 0,
+		'path_not_found': 0,
+	}
 	order = product.images.count()
 	existing_paths = set(product.images.values_list('image', flat=True))
 
@@ -255,6 +262,7 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 				order += 1
 			except Exception:
 				failed += 1
+				fail_reason_counts['data_uri_invalid'] += 1
 				if len(failed_samples) < 5:
 					failed_samples.append(f'{source[:72]}... (invalid data URI)')
 				logger.exception('csv.import image_data_uri_failed product_id=%s', product.id)
@@ -285,6 +293,7 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 				order += 1
 			except Exception:
 				failed += 1
+				fail_reason_counts['download_failed'] += 1
 				if len(failed_samples) < 5:
 					failed_samples.append(f'{source[:120]} (download failed)')
 				logger.exception('csv.import image_download_failed product_id=%s source=%s', product.id, source)
@@ -301,6 +310,7 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 					continue
 				except Exception:
 					failed += 1
+					fail_reason_counts['archive_copy_failed'] += 1
 					if len(failed_samples) < 5:
 						failed_samples.append(f'{source[:120]} (archive copy failed)')
 					logger.exception('csv.import image_archive_copy_failed product_id=%s source=%s', product.id, source)
@@ -315,12 +325,14 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 					continue
 				except Exception:
 					failed += 1
+					fail_reason_counts['local_copy_failed'] += 1
 					if len(failed_samples) < 5:
 						failed_samples.append(f'{source[:120]} (local copy failed)')
 					logger.exception('csv.import image_local_copy_failed product_id=%s source=%s', product.id, source)
 					continue
 
 			failed += 1
+			fail_reason_counts['path_not_found'] += 1
 			if len(failed_samples) < 5:
 				failed_samples.append(f'{source[:120]} (path not found)')
 			logger.warning('csv.import image_path_not_found product_id=%s source=%s', product.id, source)
@@ -339,7 +351,7 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 		created += 1
 		order += 1
 
-	return created, failed, skipped_existing, failed_samples
+	return created, failed, skipped_existing, failed_samples, fail_reason_counts
 
 
 @admin.register(Category)
@@ -564,6 +576,13 @@ class ProductAdmin(admin.ModelAdmin):
 					images_failed = 0
 					images_skipped_existing = 0
 					image_fail_samples = []
+					image_fail_reason_totals = {
+						'data_uri_invalid': 0,
+						'download_failed': 0,
+						'archive_copy_failed': 0,
+						'local_copy_failed': 0,
+						'path_not_found': 0,
+					}
 					for row in reader:
 						name = row.get('name')
 						if not name:
@@ -603,7 +622,7 @@ class ProductAdmin(admin.ModelAdmin):
 						# For existing products, avoid repeated remote downloads when images already exist.
 						should_import_images = bool(image_sources) and (created_flag or not prod.images.exists())
 						if should_import_images:
-							c, f_count, s, samples = _attach_csv_images_to_product(
+							c, f_count, s, samples, fail_reasons = _attach_csv_images_to_product(
 								prod,
 								image_sources,
 								archive_index=archive_index,
@@ -612,6 +631,9 @@ class ProductAdmin(admin.ModelAdmin):
 							images_created += c
 							images_failed += f_count
 							images_skipped_existing += s
+							for reason_key, reason_count in (fail_reasons or {}).items():
+								if reason_key in image_fail_reason_totals:
+									image_fail_reason_totals[reason_key] += int(reason_count or 0)
 							for sample in samples:
 								if len(image_fail_samples) < 5:
 									image_fail_samples.append(sample)
@@ -623,6 +645,20 @@ class ProductAdmin(admin.ModelAdmin):
 					)
 					if images_failed:
 						summary += f' Image rows failed: {images_failed}.'
+						failure_labels = {
+							'path_not_found': 'path not found',
+							'download_failed': 'download failed',
+							'archive_copy_failed': 'archive copy failed',
+							'local_copy_failed': 'local copy failed',
+							'data_uri_invalid': 'invalid data uri',
+						}
+						parts = []
+						for key in ('path_not_found', 'download_failed', 'archive_copy_failed', 'local_copy_failed', 'data_uri_invalid'):
+							count = int(image_fail_reason_totals.get(key, 0))
+							if count > 0:
+								parts.append(f'{failure_labels[key]}: {count}')
+						if parts:
+							summary += f' Failure breakdown: {", ".join(parts)}.'
 					if images_skipped_existing:
 						summary += f' Duplicate image paths skipped: {images_skipped_existing}.'
 					if image_fail_samples:
@@ -836,4 +872,11 @@ class NewsletterSubscriptionAdmin(admin.ModelAdmin):
 	list_display = ('email', 'is_active', 'source', 'created_at', 'updated_at')
 	list_filter = ('is_active', 'source', 'created_at')
 	search_fields = ('email',)
+
+
+@admin.register(AssistantPolicy)
+class AssistantPolicyAdmin(admin.ModelAdmin):
+	list_display = ('key', 'title', 'is_active', 'updated_at')
+	list_filter = ('is_active',)
+	search_fields = ('key', 'title', 'content')
 

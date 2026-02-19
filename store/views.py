@@ -5,7 +5,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from .models import (
     Product, Cart, CartItem, Order, OrderItem, ShippingMethod, Address, Category,
-    ContactMessage, NewsletterSubscription, PaymentTransaction, HomeHeroSlide, Wishlist, ProductReview,
+    ContactMessage, NewsletterSubscription, PaymentTransaction, HomeHeroSlide, Wishlist, ProductReview, AssistantPolicy,
 )
 from django.db.models import Count, Q, Avg
 from .serializers import (
@@ -365,72 +365,267 @@ def get_shipping_methods(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def chat_assistant(request):
-    """Simple storefront assistant endpoint used by the frontend chatbot."""
+    """
+    Backward-compatible endpoint for existing frontend integrations.
+    """
+    return _assistant_chat_response(request, bucket='chat_assistant')
+
+
+_ASSISTANT_INTENT_SUGGESTIONS = {
+    'order_tracking': ['Track my order', 'Where is my package?', 'Check payment status'],
+    'shipping': ['Shipping methods', 'Delivery timelines', 'Do you ship internationally?'],
+    'payment': ['Payment options', 'Card payment', 'Checkout support'],
+    'product_search': ['Show featured products', 'Find skincare products', 'Search by category'],
+    'returns': ['Return policy', 'How to request refund', 'Exchange options'],
+    'general': ['Track my order', 'Shipping information', 'Find products'],
+}
+
+_ASSISTANT_ORDER_TOKEN_RE = re.compile(r'\b[A-Z0-9][A-Z0-9-]{5,31}\b', flags=re.IGNORECASE)
+
+
+def _assistant_policy_text(key, fallback):
+    policy = AssistantPolicy.objects.filter(key=key, is_active=True).order_by('-updated_at').first()
+    if policy and (policy.content or '').strip():
+        return policy.content.strip()
+    return fallback
+
+
+def _assistant_detect_intent(message):
+    text = str(message or '').strip().lower()
+    if not text:
+        return 'general'
+
+    if any(word in text for word in ['track', 'tracking', 'where is', 'where\'s', 'status']) and any(
+        word in text for word in ['order', 'package', 'shipment', 'delivery', 'transaction', 'payment']
+    ):
+        return 'order_tracking'
+    if any(word in text for word in ['order number', 'tracking id', 'tracking number']):
+        return 'order_tracking'
+    if any(word in text for word in ['shipping', 'delivery', 'ship', 'dispatch', 'courier']):
+        return 'shipping'
+    if any(word in text for word in ['payment', 'pay', 'card', 'stripe', 'paypal', 'flutterwave', 'checkout']):
+        return 'payment'
+    if any(word in text for word in ['return', 'refund', 'exchange', 'cancel order']):
+        return 'returns'
+    if any(word in text for word in ['find', 'search', 'show', 'looking for', 'do you have', 'product', 'category']):
+        return 'product_search'
+    if len(text) >= 2 and Product.objects.filter(is_active=True, name__icontains=text).exists():
+        return 'product_search'
+    return 'general'
+
+
+def _assistant_extract_search_query(message):
+    text = str(message or '').strip()
+    if not text:
+        return ''
+    lowered = text.lower()
+    patterns = [
+        r'(?:find|search|show|looking for|look for|do you have)\s+(.+)$',
+        r'(?:product|products|category|categories)\s+(?:for|about|named)?\s*(.+)$',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, lowered, flags=re.IGNORECASE)
+        if match:
+            candidate = re.sub(r'[^a-zA-Z0-9\s-]+', '', match.group(1)).strip()
+            if candidate:
+                return candidate
+    candidate = re.sub(r'[^a-zA-Z0-9\s-]+', '', lowered).strip()
+    generic_terms = {'products', 'product', 'items', 'item', 'category', 'categories'}
+    if candidate in generic_terms:
+        return ''
+    return candidate
+
+
+def _assistant_extract_order_token(message, context):
+    if isinstance(context, dict):
+        for key in ('order_number', 'tracking_id', 'transaction_id', 'order'):
+            value = str(context.get(key) or '').strip()
+            if value and _ASSISTANT_ORDER_TOKEN_RE.search(value):
+                return value.upper()
+
+    text = str(message or '').strip()
+    explicit = re.search(r'(?:order|tracking|track|txn|transaction)[\s#:=\-]*([A-Z0-9-]{6,32})', text, flags=re.IGNORECASE)
+    if explicit:
+        return explicit.group(1).upper()
+
+    tokens = _ASSISTANT_ORDER_TOKEN_RE.findall(text)
+    if tokens:
+        return tokens[0].upper()
+    return ''
+
+
+def _assistant_lookup_order(token):
+    if not token:
+        return None, None
+
+    order = Order.objects.filter(order_number__iexact=token).first()
+    if not order and token.isdigit():
+        order = Order.objects.filter(id=int(token)).first()
+    if order:
+        return order, order.transactions.order_by('-created_at').first()
+
+    txn = (
+        PaymentTransaction.objects
+        .select_related('order')
+        .filter(Q(provider_transaction_id__iexact=token) | Q(paypal_order_id__iexact=token))
+        .order_by('-created_at')
+        .first()
+    )
+    if txn:
+        return txn.order, txn
+    return None, None
+
+
+def _assistant_order_tracking_reply(message, context):
+    token = _assistant_extract_order_token(message, context)
+    if not token:
+        return (
+            "Please share your order number or tracking ID to check status. "
+            "You can find the order number in your order confirmation email and account orders page."
+        )
+
+    order, txn = _assistant_lookup_order(token)
+    if not order:
+        return (
+            f"I could not find an order with '{token}'. "
+            "Please confirm the order number or tracking ID from your confirmation email."
+        )
+
+    status_label = order.get_status_display() if hasattr(order, 'get_status_display') else str(order.status)
+    parts = [f"Order {order.order_number} is currently {status_label.lower()}."]
+    if txn:
+        provider = (txn.provider or 'payment gateway').title()
+        parts.append(f"Latest payment status: {txn.status} via {provider}.")
+    return " ".join(parts)
+
+
+def _assistant_shipping_reply():
+    policy_text = _assistant_policy_text(
+        'shipping',
+        'Shipping details are available at checkout after address confirmation.',
+    )
+    methods = ShippingMethod.objects.filter(active=True).order_by('price')[:3]
+    if not methods:
+        return policy_text
+    lines = [f"- {m.name}: ${m.price} ({m.delivery_days or 'delivery time varies'})" for m in methods]
+    return f"{policy_text}\n\nAvailable shipping methods:\n" + "\n".join(lines)
+
+
+def _assistant_payment_reply():
+    policy_text = _assistant_policy_text(
+        'payment',
+        'Available payment methods are shown securely at checkout.',
+    )
+    providers = []
+    if settings.STRIPE_SECRET_KEY and settings.STRIPE_PUBLISHABLE_KEY:
+        providers.append('Stripe')
+    if settings.FLUTTERWAVE_SECRET_KEY:
+        providers.append('Flutterwave')
+    if settings.PAYPAL_CLIENT_ID and settings.PAYPAL_SECRET:
+        providers.append('PayPal')
+    if providers:
+        return f"{policy_text}\n\nCurrently available methods: {', '.join(providers)}."
+    return policy_text
+
+
+def _assistant_returns_reply():
+    return _assistant_policy_text(
+        'returns',
+        'For returns or refunds, please contact support with your order number.',
+    )
+
+
+def _assistant_product_search_reply(message):
+    search_query = _assistant_extract_search_query(message)
+    if not search_query:
+        return "Please tell me what product name or category you want to find."
+
+    matches = (
+        Product.objects
+        .filter(
+            is_active=True,
+        )
+        .filter(
+            Q(name__icontains=search_query)
+            | Q(slug__icontains=search_query)
+            | Q(categories__name__icontains=search_query)
+            | Q(categories__slug__icontains=search_query)
+        )
+        .distinct()
+        .order_by('-is_featured', 'name')[:5]
+    )
+    if not matches:
+        return f"I could not find products matching '{search_query}'. Try another keyword or category."
+
+    lines = []
+    for product in matches:
+        stock_label = 'In stock' if int(product.stock or 0) > 0 else 'Out of stock'
+        lines.append(f"- {product.name} - ${product.price} ({stock_label})")
+    return f"Top matches for '{search_query}':\n" + "\n".join(lines)
+
+
+def _assistant_general_reply():
+    return (
+        "I can help with order tracking, shipping information, payment options, "
+        "product search, and returns."
+    )
+
+
+def _assistant_build_response(message, context):
+    intent = _assistant_detect_intent(message)
+    if intent == 'order_tracking':
+        reply = _assistant_order_tracking_reply(message, context)
+    elif intent == 'shipping':
+        reply = _assistant_shipping_reply()
+    elif intent == 'payment':
+        reply = _assistant_payment_reply()
+    elif intent == 'product_search':
+        reply = _assistant_product_search_reply(message)
+    elif intent == 'returns':
+        reply = _assistant_returns_reply()
+    else:
+        reply = _assistant_general_reply()
+    suggestions = _ASSISTANT_INTENT_SUGGESTIONS.get(intent, _ASSISTANT_INTENT_SUGGESTIONS['general'])
+    return intent, reply, suggestions
+
+
+def _assistant_chat_response(request, bucket='assistant_chat'):
     if not _rate_limit_allow(
         request,
-        bucket='chat_assistant',
+        bucket=bucket,
         limit=getattr(settings, 'RATE_LIMIT_CHAT_LIMIT', 45),
         window_seconds=getattr(settings, 'RATE_LIMIT_CHAT_WINDOW_SECONDS', 60),
     ):
-        logger.warning('chat.rate_limited ip=%s', _get_client_ip(request))
-        return _rate_limit_response('Too many chat requests. Please wait a moment and try again.')
+        logger.warning('assistant.chat rate_limited ip=%s', _get_client_ip(request))
+        return _rate_limit_response('Too many assistant requests. Please wait a moment and try again.')
 
     message = str(request.data.get('message', '')).strip()
     if not message:
-        return Response({'error': 'message_required'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'message_required', 'detail': 'Message is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    text = message.lower()
+    session_id = str(request.data.get('session_id') or '').strip()[:64] or uuid4().hex
+    context = request.data.get('context')
+    if not isinstance(context, dict):
+        context = {}
 
-    if any(word in text for word in ['hello', 'hi', 'hey']):
-        return Response({
-            'reply': (
-                "Hi! I can help with products, shipping, payments, and order tracking. "
-                "What would you like to do?"
-            )
-        })
+    intent, reply, suggestions = _assistant_build_response(message, context)
+    logger.info('assistant.chat received message=%s ip=%s intent=%s', message[:240], _get_client_ip(request), intent)
 
-    if 'order' in text and any(word in text for word in ['track', 'status', 'where']):
-        return Response({
-            'reply': "You can track an order from the Order Tracking page using your order number."
-        })
+    return Response(
+        {
+            'reply': reply,
+            'suggestions': suggestions,
+            'intent': intent,
+            'session_id': session_id,
+        }
+    )
 
-    if any(word in text for word in ['shipping', 'delivery', 'ship']):
-        methods = ShippingMethod.objects.filter(active=True).order_by('price')[:3]
-        if methods:
-            lines = [
-                f"{m.name}: ${m.price} ({m.delivery_days or 'delivery time varies'})"
-                for m in methods
-            ]
-            return Response({'reply': "Available shipping methods: " + " | ".join(lines)})
-        return Response({
-            'reply': "Shipping options are shown at checkout once you provide your address."
-        })
 
-    if any(word in text for word in ['payment', 'pay', 'card', 'stripe', 'paypal', 'flutterwave']):
-        providers = []
-        if settings.STRIPE_SECRET_KEY and settings.STRIPE_PUBLISHABLE_KEY:
-            providers.append('Stripe')
-        if settings.FLUTTERWAVE_SECRET_KEY:
-            providers.append('Flutterwave')
-        if settings.PAYPAL_CLIENT_ID and settings.PAYPAL_SECRET:
-            providers.append('PayPal')
-        if providers:
-            return Response({'reply': "Currently available payment methods: " + ", ".join(providers) + "."})
-        return Response({'reply': "Payment methods are configured at checkout based on your deployment setup."})
-
-    if any(word in text for word in ['return', 'refund']):
-        return Response({
-            'reply': "For returns/refunds, see Shipping & Returns or contact support from the Contact page."
-        })
-
-    matches = Product.objects.filter(is_active=True, name__icontains=message).order_by('-is_featured')[:3]
-    if matches:
-        product_names = ", ".join([p.name for p in matches])
-        return Response({'reply': f"I found matching products: {product_names}."})
-
-    return Response({
-        'reply': "I can help with product search, shipping, payment methods, and order tracking."
-    })
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@csrf_exempt
+def assistant_chat(request):
+    return _assistant_chat_response(request, bucket='assistant_chat')
 
 
 @api_view(['POST'])

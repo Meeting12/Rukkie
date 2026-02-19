@@ -1,5 +1,7 @@
 Django==5.2.4
 celery
+cloudinary
+django-cloudinary-storage
 dj-database-url
 django-cors-headers
 djangorestframework
