@@ -2,10 +2,16 @@ import { Product, Category, HeroSlide } from "@/types/product";
 
 const PLACEHOLDER_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'%3E%3Crect width='400' height='400' fill='%23f1f1f1'/%3E%3Ctext x='50%25' y='50%25' fill='%23777' font-size='24' text-anchor='middle' dominant-baseline='middle'%3ENo Image%3C/text%3E%3C/svg%3E";
 
+function isPlaceholderCloudinaryUrl(value: string): boolean {
+  const normalized = String(value || "").toLowerCase();
+  return normalized.includes("<cloud_name>") || normalized.includes("%3ccloud_name%3e");
+}
+
 function normalizeImageUrl(value: any): string {
   const raw = typeof value === "string" ? value : (value?.image_url || value?.image || value?.url || "");
   let cleaned = String(raw || "").trim().replace(/\\/g, "/");
   if (!cleaned) return PLACEHOLDER_IMAGE;
+  if (isPlaceholderCloudinaryUrl(cleaned)) return PLACEHOLDER_IMAGE;
 
   if (cleaned.startsWith("https:/") && !cleaned.startsWith("https://")) {
     cleaned = cleaned.replace("https:/", "https://");
@@ -18,7 +24,10 @@ function normalizeImageUrl(value: any): string {
 
   const cloudinaryIndex = cleaned.indexOf("res.cloudinary.com/");
   if (cloudinaryIndex >= 0) {
-    return `https://${cleaned.slice(cloudinaryIndex)}`;
+    const candidate = `https://${cleaned.slice(cloudinaryIndex)}`
+      .replace("/image/upload/v1/media/", "/image/upload/v1/")
+      .replace("/image/upload/media/", "/image/upload/");
+    return isPlaceholderCloudinaryUrl(candidate) ? PLACEHOLDER_IMAGE : candidate;
   }
 
   if (cleaned.startsWith("/")) return cleaned;

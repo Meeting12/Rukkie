@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { 
   ChevronDown, 
   Minus, 
@@ -32,6 +32,8 @@ const ProductDetail = () => {
   const fallbackImage = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'%3E%3Crect width='400' height='400' fill='%23f1f1f1'/%3E%3Ctext x='50%25' y='50%25' fill='%23777' font-size='24' text-anchor='middle' dominant-baseline='middle'%3ENo Image%3C/text%3E%3C/svg%3E";
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const prefetchedProduct = (location.state as { prefetchedProduct?: any } | null)?.prefetchedProduct ?? null;
   const [product, setProduct] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,15 +55,27 @@ const ProductDetail = () => {
   useEffect(() => {
     let mounted = true;
     const load = async () => {
-      setLoading(true);
+      const hasPrefetchedForSlug = Boolean(prefetchedProduct && prefetchedProduct.slug === slug);
+      if (hasPrefetchedForSlug) {
+        setProduct(prefetchedProduct);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+      setSelectedImage(0);
       setError(null);
       try {
         // use mapped fetch helper so frontend gets consistent Product shape
         const data = await fetchProductBySlug(slug || "");
         if (!mounted) return;
+        if (!data) {
+          setError("Product not found");
+          setProduct(null);
+          return;
+        }
         setProduct(data);
 
-        if (data && data.category) {
+        if (data.category) {
           try {
             const list = await fetchProducts();
             if (!mounted) return;
@@ -91,8 +105,11 @@ const ProductDetail = () => {
             setProduct(null);
           }
         } else {
-          setError(msg || 'Product not found');
-          setProduct(null);
+          // Keep prefetched product visible if available while network fails.
+          if (!hasPrefetchedForSlug) {
+            setError(msg || 'Product not found');
+            setProduct(null);
+          }
         }
       } finally {
         if (mounted) setLoading(false);
@@ -100,7 +117,7 @@ const ProductDetail = () => {
     };
     load();
     return () => { mounted = false; };
-  }, [slug]);
+  }, [slug, prefetchedProduct]);
 
   useEffect(() => {
     let mounted = true;

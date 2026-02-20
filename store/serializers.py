@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import os
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote, unquote
 from .models import (
     Product,
     ProductImage,
@@ -26,8 +26,19 @@ User = get_user_model()
 
 
 def _cloudinary_cloud_name():
+    def _clean_cloud_name(value: str) -> str:
+        candidate = str(value or '').strip()
+        if not candidate:
+            return ''
+        lowered = unquote(candidate).strip().lower()
+        if '<' in lowered or '>' in lowered:
+            return ''
+        if lowered in {'cloud_name', 'your_cloud_name', 'replace_me'}:
+            return ''
+        return candidate
+
     storage_cfg = getattr(settings, 'CLOUDINARY_STORAGE', {}) or {}
-    cloud_name = str(storage_cfg.get('CLOUD_NAME') or '').strip()
+    cloud_name = _clean_cloud_name(storage_cfg.get('CLOUD_NAME'))
     if cloud_name:
         return cloud_name
     cloudinary_url = str(os.environ.get('CLOUDINARY_URL') or '').strip().strip('"').strip("'")
@@ -38,14 +49,74 @@ def _cloudinary_cloud_name():
     try:
         parsed = urlparse(cloudinary_url)
         if parsed.scheme == 'cloudinary':
-            return str(parsed.hostname or '').strip()
+            return _clean_cloud_name(parsed.hostname)
     except Exception:
         return ''
     return ''
 
 
-def _fallback_image_url_from_name(name: str) -> str:
+def _extract_cloudinary_public_id(path: str) -> str:
+    path = str(path or '').replace('\\', '/')
+    marker = '/image/upload/'
+    lowered = path.lower()
+    if marker in lowered:
+        idx = lowered.find(marker)
+        tail = path[idx + len(marker):].lstrip('/')
+    else:
+        segments = [seg for seg in path.split('/') if seg]
+        tail = '/'.join(segments[1:]) if len(segments) > 1 else ''
+
+    if tail.startswith('v') and '/' in tail:
+        version, remainder = tail.split('/', 1)
+        if version[1:].isdigit():
+            tail = remainder
+    return unquote(tail).lstrip('/')
+
+
+def _normalize_cloudinary_delivery_url(url: str) -> str:
+    cleaned = str(url or '').strip()
+    if not cleaned:
+        return ''
+    try:
+        parsed = urlparse(cleaned)
+    except Exception:
+        return cleaned
+    if 'res.cloudinary.com' not in str(parsed.netloc or '').lower():
+        return cleaned
+
+    path = (parsed.path or '').replace('\\', '/')
+    # Some legacy rows were saved as "media/products/..." while Cloudinary public_id is "products/...".
+    path = path.replace('/image/upload/v1/media/', '/image/upload/v1/')
+    path = path.replace('/image/upload/media/', '/image/upload/')
+    path_segments = [seg for seg in path.split('/') if seg]
+    current_cloud_name = unquote(path_segments[0]).strip() if path_segments else ''
+    cloud_name = _cloudinary_cloud_name()
+    is_placeholder_cloud = (
+        (not current_cloud_name)
+        or ('<' in current_cloud_name or '>' in current_cloud_name)
+        or (current_cloud_name.lower() in {'cloud_name', 'your_cloud_name', 'replace_me'})
+    )
+    if is_placeholder_cloud:
+        public_id = _extract_cloudinary_public_id(path)
+        if cloud_name and public_id:
+            return f'https://res.cloudinary.com/{cloud_name}/image/upload/{quote(public_id, safe="/")}'
+        if public_id:
+            if public_id.startswith('media/'):
+                public_id = public_id[len('media/'):]
+            return f'/media/{public_id}'
+        return ''
+
+    try:
+        return parsed._replace(path=path).geturl()
+    except Exception:
+        return cleaned
+
+
+def _fallback_image_url_from_name(name: str, upload_prefix: str = '') -> str:
     cleaned = str(name or '').strip().replace('\\', '/').lstrip('/')
+    prefix = str(upload_prefix or '').strip().replace('\\', '/').lstrip('/')
+    if prefix and not prefix.endswith('/'):
+        prefix = f'{prefix}/'
     if not cleaned:
         return ''
     if cleaned.startswith('https:/') and not cleaned.startswith('https://'):
@@ -53,6 +124,12 @@ def _fallback_image_url_from_name(name: str) -> str:
     if cleaned.startswith('http:/') and not cleaned.startswith('http://'):
         cleaned = cleaned.replace('http:/', 'http://', 1)
     if cleaned.startswith('http://') or cleaned.startswith('https://') or cleaned.startswith('data:'):
+        if 'res.cloudinary.com/' in cleaned:
+            repaired = _normalize_cloudinary_delivery_url(cleaned)
+            if repaired:
+                cleaned = repaired
+            if cleaned.startswith('/'):
+                return cleaned
         # If a Cloudinary URL was stored without `/image/upload/`, normalize it.
         if 'res.cloudinary.com/' in cleaned and '/image/upload/' not in cleaned:
             try:
@@ -65,8 +142,12 @@ def _fallback_image_url_from_name(name: str) -> str:
                     return f'{parsed.scheme}://{parsed.netloc}/{cloud_name}/image/upload/{public_id}'
             except Exception:
                 pass
-        return cleaned
+        return _normalize_cloudinary_delivery_url(cleaned)
     if cleaned.startswith('media/'):
+        cloud_name = _cloudinary_cloud_name()
+        media_relative = cleaned[len('media/'):]
+        if cloud_name and media_relative.startswith(('products/', 'categories/', 'hero/')):
+            return f'https://res.cloudinary.com/{cloud_name}/image/upload/{quote(media_relative, safe="/")}'
         return f'/{cleaned}'
     if cleaned.startswith(('products/', 'categories/', 'hero/')):
         cloud_name = _cloudinary_cloud_name()
@@ -74,6 +155,11 @@ def _fallback_image_url_from_name(name: str) -> str:
             return f'https://res.cloudinary.com/{cloud_name}/image/upload/{quote(cleaned, safe="/")}'
         return f'/media/{cleaned}'
     if cleaned.startswith('res.cloudinary.com/'):
+        candidate = _normalize_cloudinary_delivery_url(f'https://{cleaned}')
+        if candidate.startswith('/'):
+            return candidate
+        if candidate:
+            cleaned = candidate
         candidate = f'https://{cleaned}'
         if '/image/upload/' not in candidate:
             try:
@@ -88,23 +174,34 @@ def _fallback_image_url_from_name(name: str) -> str:
         return candidate
 
     # Cloudinary often stores a public_id in the field value; construct delivery URL.
+    if prefix and '/' not in cleaned and cleaned.lower().endswith(
+        ('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg', '.avif')
+    ):
+        cleaned = f'{prefix}{cleaned}'
     cloud_name = _cloudinary_cloud_name()
     if cloud_name:
         return f'https://res.cloudinary.com/{cloud_name}/image/upload/{quote(cleaned, safe="/")}'
+    if prefix and '/' not in cleaned:
+        cleaned = f'{prefix}{cleaned}'
     return f'/media/{cleaned}'
 
 
 def _resolve_image_url(field_file, request=None) -> str:
     if not field_file:
         return ''
+    upload_prefix = ''
+    try:
+        upload_prefix = str(getattr(getattr(field_file, 'field', None), 'upload_to', '') or '').strip()
+    except Exception:
+        upload_prefix = ''
     raw_url = ''
     try:
         raw_url = str(field_file.url or '').strip()
     except Exception:
         raw_url = ''
-    url = _fallback_image_url_from_name(raw_url) if raw_url else ''
+    url = _fallback_image_url_from_name(raw_url, upload_prefix=upload_prefix) if raw_url else ''
     if not url:
-        url = _fallback_image_url_from_name(getattr(field_file, 'name', ''))
+        url = _fallback_image_url_from_name(getattr(field_file, 'name', ''), upload_prefix=upload_prefix)
     if not url:
         return ''
     if request and url.startswith('/'):

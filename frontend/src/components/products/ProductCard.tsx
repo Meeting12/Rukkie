@@ -49,7 +49,7 @@ export const ProductCard = ({ product }: ProductCardProps) => {
       onMouseEnterCapture={() => prefetchProduct(product.slug)}
       onTouchStart={() => prefetchProduct(product.slug)}
     >
-      <Link to={`/product/${product.slug}`}>
+      <Link to={`/product/${product.slug}`} state={{ prefetchedProduct: product }}>
         {/* Image Container */}
         <div className="product-card-image relative aspect-square bg-secondary">
           <img
@@ -119,7 +119,7 @@ export const ProductCard = ({ product }: ProductCardProps) => {
                 className="rounded-full"
                 asChild
               >
-                <Link to={`/product/${product.slug}`} aria-label="Quick view">
+                <Link to={`/product/${product.slug}`} state={{ prefetchedProduct: product }} aria-label="Quick view">
                   <Eye className="h-4 w-4" />
                 </Link>
               </Button>

@@ -146,7 +146,7 @@ export const Header = () => {
             </Link>
 
             {/* Account */}
-            <Link to="/account" className="hidden md:flex">
+            <Link to="/account">
               <Button variant="ghost" size="icon" aria-label="Account">
                 <User className="h-5 w-5" />
               </Button>

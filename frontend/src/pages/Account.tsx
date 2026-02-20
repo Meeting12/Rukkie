@@ -679,7 +679,7 @@ const Account = () => {
             {addresses.map((address) => (
               <div key={address.id} className="rounded-lg border border-border p-4">
                 <p className="font-medium">{address.full_name}</p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground break-words">
                   {address.line1}
                   {address.line2 ? `, ${address.line2}` : ""}, {address.city}, {address.state || ""} {address.postal_code}, {address.country}
                 </p>
@@ -759,7 +759,7 @@ const Account = () => {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{row.title}</p>
-                  <p className="text-sm text-muted-foreground mt-1">{row.message}</p>
+                  <p className="text-sm text-muted-foreground mt-1 break-words">{row.message}</p>
                   <p className="text-xs text-muted-foreground mt-2">{new Date(row.created_at).toLocaleString()}</p>
                 </div>
                 {!row.is_read && (
@@ -793,7 +793,7 @@ const Account = () => {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{row.subject}</p>
-                  <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{row.body}</p>
+                  <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap break-words">{row.body}</p>
                   <p className="text-xs text-muted-foreground mt-2">
                     {new Date(row.created_at).toLocaleString()} | {row.category}
                   </p>
@@ -832,10 +832,10 @@ const Account = () => {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-12">
-        <div className="grid lg:grid-cols-4 gap-8">
-          {/* Sidebar */}
-          <div className="lg:col-span-1">
+      <div className="container mx-auto px-4 py-8 md:py-12">
+        <div className="grid lg:grid-cols-4 gap-6 lg:gap-8">
+          {/* Desktop Sidebar */}
+          <div className="hidden lg:block lg:col-span-1">
             <nav className="space-y-2">
               {menuItems.map((item) => (
                 <button
@@ -862,7 +862,52 @@ const Account = () => {
           </div>
 
           {/* Main Content */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3 space-y-4">
+            {/* Mobile Account Header */}
+            <div className="lg:hidden rounded-xl border border-border bg-card p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Signed in as</p>
+                  <p className="text-base font-semibold truncate max-w-[12rem]">{username || "Account User"}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => { await logout(); toast.success("Logged out"); }}
+                  className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Log Out
+                </Button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="rounded-full bg-secondary px-2 py-1 max-w-full break-words">Unread notifications: {notificationsUnread}</span>
+                <span className="rounded-full bg-secondary px-2 py-1 max-w-full break-words">Unread mailbox: {mailboxUnread}</span>
+              </div>
+            </div>
+
+            {/* Mobile Section Switcher */}
+            <div className="lg:hidden w-full overflow-x-auto pb-1">
+              <div className="inline-flex min-w-max gap-2">
+                {menuItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveSection(item.id)}
+                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-3 py-2 text-sm transition-colors ${
+                      activeSection === item.id
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card text-foreground hover:bg-secondary"
+                    }`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <Card>
               <CardHeader>
                 <CardTitle>{sectionMeta[activeSection].title}</CardTitle>
