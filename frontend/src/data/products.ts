@@ -40,6 +40,29 @@ function mapCategoryItem(c: any): Category {
   } as Category;
 }
 
+function mapBackendProduct(p: any): Product {
+  return {
+    id: String(p.id),
+    name: p.name,
+    slug: p.slug,
+    description: p.description || "",
+    price: Number(p.price),
+    originalPrice: p.original_price ? Number(p.original_price) : (p.originalPrice ? Number(p.originalPrice) : undefined),
+    images: mapImageArray(p.images),
+    category: (p.categories && p.categories.length > 0) ? (p.categories[0].slug || p.categories[0].name) : (p.category || "uncategorized"),
+    rating: p.rating || 0,
+    reviewCount: p.review_count || p.reviewCount || 0,
+    inStock: p.stock ? p.stock > 0 : (p.inStock !== undefined ? p.inStock : true),
+    isDigital: !!p.is_digital || !!p.isDigital,
+    isFeatured: !!p.is_featured || !!p.isFeatured,
+    isFlashSale: !!p.is_flash_sale || !!p.isFlashSale,
+    features: p.features || [],
+    benefits: p.benefits || [],
+    tags: p.tags || [],
+    createdAt: p.created_at ? new Date(p.created_at) : (p.createdAt ? new Date(p.createdAt) : new Date()),
+  } as Product;
+}
+
 export const categories: Category[] = [
   {
     id: "1",
@@ -307,55 +330,72 @@ export const getProductBySlug = (slug: string): Product | undefined => {
   return products.find(p => p.slug === slug);
 };
 
+let productsCache: Product[] | null = null;
+let productsPromise: Promise<Product[]> | null = null;
+let categoriesCache: Category[] | null = null;
+let categoriesPromise: Promise<Category[]> | null = null;
+let homeContentCache: { heroSlides: HeroSlide[]; categories: Category[] } | null = null;
+let homeContentPromise: Promise<{ heroSlides: HeroSlide[]; categories: Category[] }> | null = null;
+let featuredProductsCache: Product[] | null = null;
+let featuredProductsPromise: Promise<Product[]> | null = null;
+const productBySlugCache = new Map<string, Product>();
+const productBySlugPromise = new Map<string, Promise<Product | undefined>>();
+const categoryProductsCache = new Map<string, Product[]>();
+const categoryProductsPromise = new Map<string, Promise<Product[]>>();
+
 // API wrappers: attempt to fetch from backend; fall back to local data
 export async function fetchProducts(): Promise<Product[]> {
+  if (productsCache) return productsCache;
+  if (productsPromise) return productsPromise;
+
+  productsPromise = (async () => {
   try {
     const res = await fetch('/api/products/');
     if (!res.ok) throw new Error('network');
     const data = await res.json();
-    // DRF may return a paginated response { results: [...] } or a plain list.
     const items = Array.isArray(data) ? data : data.results || [];
-    // Map backend product shape to frontend Product type expected by components
-    const mapped = items.map((p: any) => ({
-      id: String(p.id),
-      name: p.name,
-      slug: p.slug,
-      description: p.description || "",
-      price: Number(p.price),
-      originalPrice: p.original_price ? Number(p.original_price) : (p.originalPrice ? Number(p.originalPrice) : undefined),
-      images: mapImageArray(p.images),
-      // Use category slug when available to keep filtering/URLs consistent
-      category: (p.categories && p.categories.length>0) ? (p.categories[0].slug || p.categories[0].name) : (p.category || "uncategorized"),
-      rating: p.rating || 0,
-      reviewCount: p.review_count || p.reviewCount || 0,
-      inStock: p.stock ? p.stock > 0 : (p.inStock !== undefined ? p.inStock : true),
-      isDigital: !!p.is_digital || !!p.isDigital,
-      isFeatured: !!p.is_featured || !!p.isFeatured,
-      isFlashSale: !!p.is_flash_sale || !!p.isFlashSale,
-      features: p.features || [],
-      benefits: p.benefits || [],
-      tags: p.tags || [],
-      createdAt: p.created_at ? new Date(p.created_at) : (p.createdAt ? new Date(p.createdAt) : new Date()),
-    } as Product));
+    const mapped = items.map((p: any) => mapBackendProduct(p));
+    productsCache = mapped;
     return mapped;
   } catch (e) {
-    return products;
+    productsCache = products;
+    return productsCache;
+  } finally {
+    productsPromise = null;
   }
+  })();
+
+  return productsPromise;
 }
 
 export async function fetchCategories(): Promise<Category[]> {
+  if (categoriesCache) return categoriesCache;
+  if (categoriesPromise) return categoriesPromise;
+
+  categoriesPromise = (async () => {
   try {
     const res = await fetch('/api/categories/');
     if (!res.ok) throw new Error('network');
     const data = await res.json();
     const items = Array.isArray(data) ? data : data.results || [];
-    return items.map((c: any) => mapCategoryItem(c));
+    categoriesCache = items.map((c: any) => mapCategoryItem(c));
+    return categoriesCache;
   } catch (e) {
-    return categories;
+    categoriesCache = categories;
+    return categoriesCache;
+  } finally {
+    categoriesPromise = null;
   }
+  })();
+
+  return categoriesPromise;
 }
 
 export async function fetchHomeContent(): Promise<{ heroSlides: HeroSlide[]; categories: Category[] }> {
+  if (homeContentCache) return homeContentCache;
+  if (homeContentPromise) return homeContentPromise;
+
+  homeContentPromise = (async () => {
   try {
     const res = await fetch('/api/home/content/');
     if (!res.ok) throw new Error('network');
@@ -382,107 +422,110 @@ export async function fetchHomeContent(): Promise<{ heroSlides: HeroSlide[]; cat
 
     const homeCategories = (Array.isArray(data?.categories) ? data.categories : []).map((c: any) => mapCategoryItem(c));
 
-    return {
+    homeContentCache = {
       heroSlides: heroSlides.length ? heroSlides : heroSlidesFallback,
       categories: homeCategories.length ? homeCategories : categories,
     };
+    return homeContentCache;
   } catch (e) {
-    return { heroSlides: heroSlidesFallback, categories };
+    homeContentCache = { heroSlides: heroSlidesFallback, categories };
+    return homeContentCache;
+  } finally {
+    homeContentPromise = null;
   }
+  })();
+
+  return homeContentPromise;
 }
 
 export async function fetchFeaturedProducts(): Promise<Product[]> {
+  if (featuredProductsCache) return featuredProductsCache;
+  if (featuredProductsPromise) return featuredProductsPromise;
+
+  featuredProductsPromise = (async () => {
   try {
     const res = await fetch('/api/products/?featured=true');
     if (!res.ok) throw new Error('network');
     const data = await res.json();
     const items = Array.isArray(data) ? data : data.results || [];
-    // reuse mapping by temporarily setting response
-    return items.map((p: any) => ({
-      id: String(p.id),
-      name: p.name,
-      slug: p.slug,
-      description: p.description || '',
-      price: Number(p.price),
-      originalPrice: p.original_price ? Number(p.original_price) : undefined,
-      images: mapImageArray(p.images),
-      category: (p.categories && p.categories.length>0) ? (p.categories[0].slug || p.categories[0].name) : (p.category || 'uncategorized'),
-      rating: p.rating || 0,
-      reviewCount: p.review_count || p.reviewCount || 0,
-      inStock: p.stock ? p.stock > 0 : true,
-      isDigital: !!p.is_digital || !!p.isDigital,
-      isFeatured: !!p.is_featured || !!p.isFeatured,
-      isFlashSale: !!p.is_flash_sale || !!p.isFlashSale,
-      features: p.features || [],
-      benefits: p.benefits || [],
-      tags: p.tags || [],
-      createdAt: p.created_at ? new Date(p.created_at) : new Date(),
-    } as Product));
+    featuredProductsCache = items.map((p: any) => mapBackendProduct(p));
+    return featuredProductsCache;
   } catch (e) {
-    return getFeaturedProducts();
+    featuredProductsCache = getFeaturedProducts();
+    return featuredProductsCache;
+  } finally {
+    featuredProductsPromise = null;
   }
+  })();
+
+  return featuredProductsPromise;
 }
 
 export async function fetchProductBySlug(slug: string): Promise<Product | undefined> {
+  if (productBySlugCache.has(slug)) return productBySlugCache.get(slug);
+  if (productBySlugPromise.has(slug)) return productBySlugPromise.get(slug);
+
+  const pending = (async () => {
   try {
     const res = await fetch(`/api/products/slug/${encodeURIComponent(slug)}/`);
     if (!res.ok) throw new Error('network');
     const p = await res.json();
-    // map single product to frontend shape
-    const mapped: Product = {
-      id: String(p.id),
-      name: p.name,
-      slug: p.slug,
-      description: p.description || "",
-      price: Number(p.price),
-      originalPrice: p.original_price ? Number(p.original_price) : (p.originalPrice ? Number(p.originalPrice) : undefined),
-      images: mapImageArray(p.images),
-      category: (p.categories && p.categories.length>0) ? (p.categories[0].slug || p.categories[0].name) : (p.category || 'uncategorized'),
-      rating: p.rating || 0,
-      reviewCount: p.review_count || p.reviewCount || 0,
-      inStock: p.stock ? p.stock > 0 : (p.inStock !== undefined ? p.inStock : true),
-      isDigital: !!p.is_digital || !!p.isDigital,
-      isFeatured: !!p.is_featured || !!p.isFeatured,
-      isFlashSale: !!p.is_flash_sale || !!p.isFlashSale,
-      features: p.features || [],
-      benefits: p.benefits || [],
-      tags: p.tags || [],
-      createdAt: p.created_at ? new Date(p.created_at) : (p.createdAt ? new Date(p.createdAt) : new Date()),
-    };
+    const mapped: Product = mapBackendProduct(p);
+    productBySlugCache.set(slug, mapped);
     return mapped;
   } catch (e) {
-    return getProductBySlug(slug);
+    const fallback = getProductBySlug(slug);
+    if (fallback) {
+      productBySlugCache.set(slug, fallback);
+    }
+    return fallback;
+  } finally {
+    productBySlugPromise.delete(slug);
   }
+  })();
+
+  productBySlugPromise.set(slug, pending);
+  return pending;
 }
 
 export async function fetchProductsByCategory(slug: string): Promise<Product[]> {
+  if (categoryProductsCache.has(slug)) return categoryProductsCache.get(slug) || [];
+  if (categoryProductsPromise.has(slug)) return categoryProductsPromise.get(slug) || [];
+
+  const pending = (async () => {
   try {
     const res = await fetch(`/api/products/?category=${encodeURIComponent(slug)}`);
     if (!res.ok) throw new Error('network');
     const data = await res.json();
     const items = Array.isArray(data) ? data : data.results || [];
-    return items.map((p: any) => ({
-      id: String(p.id),
-      name: p.name,
-      slug: p.slug,
-      description: p.description || '',
-      price: Number(p.price),
-      originalPrice: p.original_price ? Number(p.original_price) : undefined,
-      images: mapImageArray(p.images),
-      category: (p.categories && p.categories.length>0) ? (p.categories[0].slug || p.categories[0].name) : (p.category || 'uncategorized'),
-      rating: p.rating || 0,
-      reviewCount: p.review_count || p.reviewCount || 0,
-      inStock: p.stock ? p.stock > 0 : true,
-      isDigital: !!p.is_digital || !!p.isDigital,
-      isFeatured: !!p.is_featured || !!p.isFeatured,
-      isFlashSale: !!p.is_flash_sale || !!p.isFlashSale,
-      features: p.features || [],
-      benefits: p.benefits || [],
-      tags: p.tags || [],
-      createdAt: p.created_at ? new Date(p.created_at) : new Date(),
-    } as Product));
+    const mapped = items.map((p: any) => mapBackendProduct(p));
+    categoryProductsCache.set(slug, mapped);
+    return mapped;
   } catch (e) {
     const key = normalizeCategoryKey(slug);
-    return products.filter((p) => normalizeCategoryKey(p.category) === key);
+    const fallback = products.filter((p) => normalizeCategoryKey(p.category) === key);
+    categoryProductsCache.set(slug, fallback);
+    return fallback;
+  } finally {
+    categoryProductsPromise.delete(slug);
   }
+  })();
+
+  categoryProductsPromise.set(slug, pending);
+  return pending;
+}
+
+export function prefetchProductsPage() {
+  void fetchProducts();
+  void fetchCategories();
+}
+
+export function prefetchCategoryProducts(slug: string) {
+  if (!slug) return;
+  void fetchProductsByCategory(slug);
+}
+
+export function prefetchProduct(slug: string) {
+  if (!slug) return;
+  void fetchProductBySlug(slug);
 }

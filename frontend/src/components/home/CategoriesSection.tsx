@@ -49,8 +49,8 @@ const CategoriesList = () => {
 
   return (
     <>
-      {cats.map((category, index) => (
-        <ScrollAnimation key={category.id} animation="fade-up" delay={index * 0.1}>
+      {cats.map((category) => (
+        <ScrollAnimation key={category.id} animation="fade-up" delay={0}>
           <CategoryCard category={category} />
         </ScrollAnimation>
       ))}

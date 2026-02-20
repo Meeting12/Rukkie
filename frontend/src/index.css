@@ -310,18 +310,25 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
 
   .promo-ticker-mask {
     @apply overflow-hidden;
+    position: relative;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 6%, black 94%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, black 6%, black 94%, transparent 100%);
   }
 
   .promo-ticker-track {
     display: flex;
     width: max-content;
-    animation: promoTicker 26s linear infinite;
+    animation: promoTicker 32s linear infinite;
     will-change: transform;
   }
 
+  .promo-ticker-mask:hover .promo-ticker-track {
+    animation-play-state: paused;
+  }
+
   .promo-ticker-item {
-    @apply whitespace-nowrap font-medium;
-    padding-inline-end: 3rem;
+    @apply whitespace-nowrap font-medium tracking-[0.01em];
+    padding-inline-end: 4rem;
   }
 
   .force-normal-case {

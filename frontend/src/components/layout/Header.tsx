@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Search, ShoppingBag, Heart, Menu, X, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { prefetchProductsPage } from "@/data/products";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -22,35 +23,16 @@ const promoMessages = [
   "Fast support and order updates in your account mailbox",
 ];
 
-const promoTextColors = [
-  "text-amber-200",
-  "text-emerald-200",
-  "text-sky-200",
-  "text-rose-200",
-  "text-violet-200",
-];
-
 export const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [promoIndex, setPromoIndex] = useState(0);
   const location = useLocation();
   const { getCartCount } = useCart();
   const { items: wishlistItems } = useWishlist();
 
   const cartCount = getCartCount();
   const wishlistCount = wishlistItems.length;
-  const promoLoopText = useMemo(() => {
-    const rotated = [...promoMessages.slice(promoIndex), ...promoMessages.slice(0, promoIndex)];
-    return rotated.join(" | ");
-  }, [promoIndex]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setPromoIndex((prev) => (prev + 1) % promoMessages.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
+  const promoLoopText = useMemo(() => promoMessages.join(" | "), []);
 
   return (
     <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border">
@@ -59,12 +41,12 @@ export const Header = () => {
         <p className="sr-only">Free shipping on orders over $100 | Use code WELCOME15 for 15% off</p>
         <div className="promo-ticker-mask">
           <div className="promo-ticker-track">
-            <p className={cn("promo-ticker-item", promoTextColors[promoIndex % promoTextColors.length])}>
+            <p className="promo-ticker-item text-primary-foreground/95">
               {promoLoopText}
             </p>
             <p
               aria-hidden="true"
-              className={cn("promo-ticker-item", promoTextColors[promoIndex % promoTextColors.length])}
+              className="promo-ticker-item text-primary-foreground/95"
             >
               {promoLoopText}
             </p>
@@ -97,6 +79,9 @@ export const Header = () => {
               <Link
                 key={item.name}
                 to={item.href}
+                onMouseEnter={item.href === "/products" ? prefetchProductsPage : undefined}
+                onFocus={item.href === "/products" ? prefetchProductsPage : undefined}
+                onTouchStart={item.href === "/products" ? prefetchProductsPage : undefined}
                 className={cn(
                   "text-sm font-medium transition-colors elegant-underline",
                   location.pathname === item.href
@@ -177,6 +162,9 @@ export const Header = () => {
                 <Link
                   key={item.name}
                   to={item.href}
+                  onMouseEnter={item.href === "/products" ? prefetchProductsPage : undefined}
+                  onFocus={item.href === "/products" ? prefetchProductsPage : undefined}
+                  onTouchStart={item.href === "/products" ? prefetchProductsPage : undefined}
                   className={cn(
                     "text-base font-medium py-2 transition-colors",
                     location.pathname === item.href

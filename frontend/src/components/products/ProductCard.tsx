@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Product } from "@/types/product";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { prefetchProduct } from "@/data/products";
 import { cn } from "@/lib/utils";
 
 interface ProductCardProps {
@@ -44,6 +45,9 @@ export const ProductCard = ({ product }: ProductCardProps) => {
       className="product-card group"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onFocusCapture={() => prefetchProduct(product.slug)}
+      onMouseEnterCapture={() => prefetchProduct(product.slug)}
+      onTouchStart={() => prefetchProduct(product.slug)}
     >
       <Link to={`/product/${product.slug}`}>
         {/* Image Container */}

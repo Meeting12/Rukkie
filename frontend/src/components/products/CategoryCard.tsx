@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { Category } from "@/types/product";
+import { prefetchCategoryProducts, prefetchProductsPage } from "@/data/products";
 
 interface CategoryCardProps {
   category: Category;
@@ -14,11 +15,23 @@ export const CategoryCard = ({ category }: CategoryCardProps) => {
     <Link
       to={`/products?category=${category.slug}`}
       className="group block relative aspect-[4/5] overflow-hidden rounded-2xl"
+      onMouseEnter={() => {
+        prefetchCategoryProducts(category.slug);
+        prefetchProductsPage();
+      }}
+      onFocus={() => {
+        prefetchCategoryProducts(category.slug);
+        prefetchProductsPage();
+      }}
+      onTouchStart={() => {
+        prefetchCategoryProducts(category.slug);
+        prefetchProductsPage();
+      }}
     >
       <img
         src={category.image || FALLBACK_CATEGORY_IMAGE}
         alt={category.name}
-        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+        className="w-full h-full object-cover opacity-85 transition-all duration-700 group-hover:scale-110 group-hover:opacity-75"
         loading="lazy"
         onError={(e) => {
           e.currentTarget.src = FALLBACK_CATEGORY_IMAGE;
@@ -26,7 +39,7 @@ export const CategoryCard = ({ category }: CategoryCardProps) => {
       />
       
       {/* Elegant gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-foreground/30 to-transparent transition-opacity duration-300" />
+      <div className="absolute inset-0 bg-gradient-to-t from-foreground/90 via-foreground/50 to-foreground/10 transition-opacity duration-300" />
       
       {/* Content */}
       <div className="absolute inset-0 z-10 flex flex-col justify-end p-6">
