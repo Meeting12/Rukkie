@@ -4,16 +4,38 @@ const PLACEHOLDER_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/20
 
 function normalizeImageUrl(value: any): string {
   const raw = typeof value === "string" ? value : (value?.image_url || value?.image || value?.url || "");
-  const cleaned = String(raw || "").trim().replace(/\\/g, "/");
+  let cleaned = String(raw || "").trim().replace(/\\/g, "/");
   if (!cleaned) return PLACEHOLDER_IMAGE;
+
+  if (cleaned.startsWith("https:/") && !cleaned.startsWith("https://")) {
+    cleaned = cleaned.replace("https:/", "https://");
+  }
+  if (cleaned.startsWith("http:/") && !cleaned.startsWith("http://")) {
+    cleaned = cleaned.replace("http:/", "http://");
+  }
+  if (cleaned.startsWith("//")) return `https:${cleaned}`;
   if (/^https?:\/\//i.test(cleaned) || cleaned.startsWith("data:")) return cleaned;
-  if (cleaned.startsWith("res.cloudinary.com/")) return `https://${cleaned}`;
+
+  const cloudinaryIndex = cleaned.indexOf("res.cloudinary.com/");
+  if (cloudinaryIndex >= 0) {
+    return `https://${cleaned.slice(cloudinaryIndex)}`;
+  }
+
   if (cleaned.startsWith("/")) return cleaned;
   if (cleaned.startsWith("media/")) return `/${cleaned}`;
-  if (cleaned.startsWith("products/")) return `/media/${cleaned}`;
+  if (cleaned.startsWith(("products/")) || cleaned.startsWith("categories/") || cleaned.startsWith("hero/")) {
+    return `/media/${cleaned}`;
+  }
+
+  if (/^v\d+\/media\//i.test(cleaned)) {
+    return `/${cleaned.replace(/^v\d+\//i, "")}`;
+  }
+
   // Bare file names can be from CSV exports.
   if (/^[^/]+\.(jpg|jpeg|png|webp|gif|bmp|svg|avif)$/i.test(cleaned)) return `/media/products/${cleaned}`;
-  // Unknown tokens (e.g. cloudinary public IDs without full URL) should not become broken relative paths.
+
+  // For unresolved relative paths, try media prefix before giving up.
+  if (cleaned.includes("/")) return `/media/${cleaned.replace(/^\/+/, "")}`;
   return PLACEHOLDER_IMAGE;
 }
 
