@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Search, ShoppingBag, Heart, Menu, X, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,21 +14,62 @@ const navigation = [
   { name: "Contact", href: "/contact" },
 ];
 
+const promoMessages = [
+  "Free shipping on orders over $100",
+  "Use code WELCOME15 for 15% off your first order",
+  "New arrivals drop every week across fashion and lifestyle",
+  "Secure checkout with Stripe, Flutterwave, and PayPal card",
+  "Fast support and order updates in your account mailbox",
+];
+
+const promoTextColors = [
+  "text-amber-200",
+  "text-emerald-200",
+  "text-sky-200",
+  "text-rose-200",
+  "text-violet-200",
+];
+
 export const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [promoIndex, setPromoIndex] = useState(0);
   const location = useLocation();
   const { getCartCount } = useCart();
   const { items: wishlistItems } = useWishlist();
 
   const cartCount = getCartCount();
   const wishlistCount = wishlistItems.length;
+  const promoLoopText = useMemo(() => {
+    const rotated = [...promoMessages.slice(promoIndex), ...promoMessages.slice(0, promoIndex)];
+    return rotated.join(" | ");
+  }, [promoIndex]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPromoIndex((prev) => (prev + 1) % promoMessages.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border">
       {/* Top bar */}
-      <div className="bg-primary text-primary-foreground py-2 text-center text-sm">
-        <p>Free shipping on orders over $100 | Use code WELCOME15 for 15% off</p>
+      <div className="bg-primary py-2 text-sm overflow-hidden">
+        <p className="sr-only">Free shipping on orders over $100 | Use code WELCOME15 for 15% off</p>
+        <div className="promo-ticker-mask">
+          <div className="promo-ticker-track">
+            <p className={cn("promo-ticker-item", promoTextColors[promoIndex % promoTextColors.length])}>
+              {promoLoopText}
+            </p>
+            <p
+              aria-hidden="true"
+              className={cn("promo-ticker-item", promoTextColors[promoIndex % promoTextColors.length])}
+            >
+              {promoLoopText}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="container mx-auto px-4">

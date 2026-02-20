@@ -133,9 +133,9 @@ const PrivacyPolicy = () => {
               If you have questions about this privacy policy or our practices, please contact us:
             </p>
             <ul className="list-none text-foreground/80 space-y-1 mt-4">
-              <li>Email: privacy@derukkies.com</li>
-              <li>Phone: +1 (555) 123-4567</li>
-              <li>Address: 123 Fashion Street, New York, NY 10001</li>
+              <li className="force-normal-case">Email: support@rukkies.com</li>
+              <li className="force-normal-case">Phone: +234803 397 2142</li>
+              <li className="force-normal-case">Address: 21 Off Ughelli Patani Expressway, Uhweru Town, Ughelli, Delta State</li>
             </ul>
           </section>
         </div>

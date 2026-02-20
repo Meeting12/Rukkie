@@ -307,4 +307,39 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
   .elegant-underline:hover::after {
     @apply scale-x-100;
   }
+
+  .promo-ticker-mask {
+    @apply overflow-hidden;
+  }
+
+  .promo-ticker-track {
+    display: flex;
+    width: max-content;
+    animation: promoTicker 26s linear infinite;
+    will-change: transform;
+  }
+
+  .promo-ticker-item {
+    @apply whitespace-nowrap font-medium;
+    padding-inline-end: 3rem;
+  }
+
+  .force-normal-case {
+    text-transform: none !important;
+  }
+
+  @keyframes promoTicker {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .promo-ticker-track {
+      animation: none;
+    }
+  }
 }

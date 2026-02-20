@@ -109,8 +109,8 @@ const Contact = () => {
                 <Mail className="h-5 w-5 text-primary" />
               </div>
               <h3 className="font-semibold text-foreground mb-2">Email</h3>
-              <a href="mailto:hello@rukkies.com" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                hello@rukkies.com
+              <a href="mailto:support@rukkies.com" className="text-sm text-muted-foreground hover:text-primary transition-colors force-normal-case">
+                support@rukkies.com
               </a>
             </div>
 
@@ -119,8 +119,8 @@ const Contact = () => {
                 <Phone className="h-5 w-5 text-primary" />
               </div>
               <h3 className="font-semibold text-foreground mb-2">Phone</h3>
-              <a href="tel:+15551234567" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                +1 (555) 123-4567
+              <a href="tel:+2348033972142" className="text-sm text-muted-foreground hover:text-primary transition-colors force-normal-case">
+                +234803 397 2142
               </a>
             </div>
 
@@ -129,7 +129,7 @@ const Contact = () => {
                 <MapPin className="h-5 w-5 text-primary" />
               </div>
               <h3 className="font-semibold text-foreground mb-2">Location</h3>
-              <p className="text-sm text-muted-foreground">Lagos, Nigeria</p>
+              <p className="text-sm text-muted-foreground force-normal-case">21 Off Ughelli Patani Expressway, Uhweru Town, Ughelli, Delta State</p>
             </div>
 
             <div className="bg-card border border-border rounded-xl p-6 text-center shadow-lg">

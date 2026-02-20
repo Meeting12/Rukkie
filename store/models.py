@@ -8,7 +8,7 @@ class Category(models.Model):
 	name = models.CharField(max_length=200)
 	slug = models.SlugField(max_length=200, unique=True)
 	description = models.TextField(blank=True)
-	image = models.ImageField(upload_to='categories/', null=True, blank=True)
+	image = models.ImageField(upload_to='categories/', max_length=255, null=True, blank=True)
 	parent = models.ForeignKey('self', null=True, blank=True, related_name='children', on_delete=models.CASCADE)
 	is_active = models.BooleanField(default=True)
 
@@ -24,7 +24,7 @@ class HomeHeroSlide(models.Model):
 	title = models.CharField(max_length=255)
 	title_accent = models.CharField(max_length=255, blank=True)
 	description = models.TextField(blank=True)
-	image = models.ImageField(upload_to='hero/', null=True, blank=True)
+	image = models.ImageField(upload_to='hero/', max_length=255, null=True, blank=True)
 	cta_text = models.CharField(max_length=80, blank=True)
 	cta_link = models.CharField(max_length=255, blank=True, default='/products')
 	secondary_cta_text = models.CharField(max_length=80, blank=True)

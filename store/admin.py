@@ -409,9 +409,34 @@ def _as_storage_image_name(value):
 			return public_name
 
 		# Fallback: try to use last path segment (rare)
+		host = str(parsed.netloc or '').lower()
+		parts = [p for p in path.split('/') if p]
+		if 'res.cloudinary.com' in host and len(parts) >= 2:
+			# Typical non-upload Cloudinary path: /<cloud_name>/<public_id...>
+			return '/'.join(parts[1:])
 		return os.path.basename(path.strip('/'))
 
 	return _normalize_media_image_path(v)
+
+
+def _is_explicit_storage_reference(source: str) -> bool:
+	"""
+	True when the CSV value already looks like a concrete storage key/public_id.
+	Used to avoid saving unresolved local file paths as fake image names.
+	"""
+	value = _normalize_media_image_path(source)
+	if not value:
+		return False
+	lowered = value.lower()
+	if lowered.startswith(('products/', 'categories/', 'hero/')):
+		return True
+	if lowered.startswith('media/'):
+		return True
+	if lowered.startswith('res.cloudinary.com/'):
+		return True
+	if lowered.startswith(('http://', 'https://')):
+		return 'res.cloudinary.com/' in lowered
+	return False
 
 
 def _attach_csv_images_to_product(product, image_sources, archive_index=None, category_slugs=None):
@@ -512,7 +537,15 @@ def _attach_csv_images_to_product(product, image_sources, archive_index=None, ca
 				logger.exception('csv.import image_local_copy_failed product_id=%s source=%s', product.id, source)
 				continue
 
-		# As a LAST resort: treat it as a storage name reference (useful when CSV already contains Cloudinary public IDs).
+		# As a LAST resort: only attach when the value already looks like a storage/public-id reference.
+		if not _is_explicit_storage_reference(source):
+			failed += 1
+			fail_reason_counts['path_not_found'] += 1
+			if len(failed_samples) < 5:
+				failed_samples.append(f'{source[:120]} (path not found)')
+			logger.warning('csv.import image_path_not_found product_id=%s source=%s', product.id, source)
+			continue
+
 		storage_name = _as_storage_image_name(source)
 		if not storage_name:
 			failed += 1
@@ -551,9 +584,13 @@ class CategoryAdmin(admin.ModelAdmin):
 
 	def image_preview(self, obj):
 		if obj and getattr(obj, 'image', None):
+			try:
+				url = obj.image.url
+			except Exception:
+				return 'Image unavailable'
 			return format_html(
 				'<img src="{}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;" />',
-				obj.image.url
+				url
 			)
 		return 'No image'
 	image_preview.short_description = 'Image'
