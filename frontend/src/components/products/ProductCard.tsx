@@ -7,6 +7,7 @@ import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { prefetchProduct } from "@/data/products";
 import { cn } from "@/lib/utils";
+import { advanceImageFallback } from "@/lib/imageFallback";
 
 interface ProductCardProps {
   product: Product;
@@ -58,8 +59,7 @@ export const ProductCard = ({ product }: ProductCardProps) => {
             className="w-full h-full object-cover"
             loading="lazy"
             onError={(e) => {
-              const target = e.currentTarget as HTMLImageElement;
-              if (target.src !== fallbackImage) target.src = fallbackImage;
+              advanceImageFallback(e.currentTarget, fallbackImage);
             }}
           />
 

@@ -12,6 +12,7 @@ import { useAuth } from "@/context/AuthContext";
 import PayPalSmartButtons from "@/components/payments/PayPalSmartButtons";
 import { toast } from "sonner";
 import { fetchJSON } from "@/lib/api";
+import { advanceImageFallback } from "@/lib/imageFallback";
 
 const FALLBACK_IMAGE =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' fill='%23f1f1f1'/%3E%3Ctext x='50%25' y='50%25' fill='%23777' font-size='14' text-anchor='middle' dominant-baseline='middle'%3ENo Image%3C/text%3E%3C/svg%3E";
@@ -457,7 +458,7 @@ const Checkout = () => {
                         alt={item.product.name}
                         className="w-16 h-16 object-cover rounded-lg"
                         onError={(e) => {
-                          e.currentTarget.src = FALLBACK_IMAGE;
+                          advanceImageFallback(e.currentTarget, FALLBACK_IMAGE);
                         }}
                       />
                       <div className="flex-1 min-w-0">

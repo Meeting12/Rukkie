@@ -4,6 +4,7 @@ import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { useWishlist } from "@/context/WishlistContext";
 import { useCart } from "@/context/CartContext";
+import { advanceImageFallback } from "@/lib/imageFallback";
 
 const Wishlist = () => {
   const { items, removeFromWishlist, clearWishlist } = useWishlist();
@@ -71,8 +72,7 @@ const Wishlist = () => {
                       alt={product.name}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                       onError={(e) => {
-                        const target = e.currentTarget as HTMLImageElement;
-                        if (target.src !== fallbackImage) target.src = fallbackImage;
+                        advanceImageFallback(e.currentTarget, fallbackImage);
                       }}
                     />
                     <button

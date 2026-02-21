@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { Category } from "@/types/product";
 import { prefetchCategoryProducts, prefetchProductsPage } from "@/data/products";
+import { advanceImageFallback } from "@/lib/imageFallback";
 
 interface CategoryCardProps {
   category: Category;
@@ -34,7 +35,7 @@ export const CategoryCard = ({ category }: CategoryCardProps) => {
         className="w-full h-full object-cover opacity-85 transition-all duration-700 group-hover:scale-110 group-hover:opacity-75"
         loading="lazy"
         onError={(e) => {
-          e.currentTarget.src = FALLBACK_CATEGORY_IMAGE;
+          advanceImageFallback(e.currentTarget, FALLBACK_CATEGORY_IMAGE);
         }}
       />
       

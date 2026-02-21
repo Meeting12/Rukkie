@@ -11,7 +11,16 @@ import { HeroSlide } from "@/types/product";
 
 export const HeroSection = () => {
   const [heroSlides, setHeroSlides] = useState<HeroSlide[]>(heroSlidesFallback);
-  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true }, [
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: true,
+    watchDrag: (_api, event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("a, button, input, textarea, select, label")) {
+        return false;
+      }
+      return true;
+    },
+  }, [
     Autoplay({ delay: 5000, stopOnInteraction: false }),
   ]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -54,12 +63,12 @@ export const HeroSection = () => {
               className="relative min-h-[85vh] md:min-h-[90vh] flex items-center flex-[0_0_100%]"
             >
               {/* Background with elegant gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-br from-background via-secondary/30 to-accent/20" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-background via-secondary/30 to-accent/20" />
               
               {/* Decorative elements */}
-              <div className="absolute top-20 left-10 w-72 h-72 bg-primary/5 rounded-full blur-3xl" />
-              <div className="absolute bottom-20 right-10 w-96 h-96 bg-accent/30 rounded-full blur-3xl" />
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial from-primary/5 to-transparent rounded-full" />
+              <div className="pointer-events-none absolute top-20 left-10 w-72 h-72 bg-primary/5 rounded-full blur-3xl" />
+              <div className="pointer-events-none absolute bottom-20 right-10 w-96 h-96 bg-accent/30 rounded-full blur-3xl" />
+              <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial from-primary/5 to-transparent rounded-full" />
               
               <div className="container mx-auto px-5 sm:px-6 lg:px-8 relative z-10">
                 <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">

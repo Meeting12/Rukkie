@@ -46,6 +46,13 @@ export const FlashSaleSection = () => {
 
   useEffect(() => {
     let mounted = true;
+    const isFlashSaleProduct = (product: any): boolean => {
+      const price = Number(product?.price ?? 0);
+      const originalPrice = Number(product?.originalPrice ?? product?.original_price ?? 0);
+      const hasDiscount = Number.isFinite(originalPrice) && originalPrice > 0 && originalPrice > price;
+      return Boolean(product?.isFlashSale || product?.is_flash_sale || hasDiscount);
+    };
+
     const shuffle = <T,>(items: T[]): T[] => {
       const list = [...items];
       for (let i = list.length - 1; i > 0; i -= 1) {
@@ -59,13 +66,13 @@ export const FlashSaleSection = () => {
         const list = await fetchProducts();
         if (!mounted) return;
         const items = Array.isArray(list) ? list : [];
-        setFlashSaleProducts(shuffle(items.filter((p: any) => !!p.isFlashSale)));
+        setFlashSaleProducts(shuffle(items.filter(isFlashSaleProduct)));
       } catch (e) {
         try {
           const mod = await import("@/data/products");
           if (!mounted) return;
-          const local = mod.getFlashSaleProducts();
-          setFlashSaleProducts(shuffle(local));
+          const local = Array.isArray(mod.products) ? mod.products : mod.getFlashSaleProducts();
+          setFlashSaleProducts(shuffle(local.filter(isFlashSaleProduct)));
         } catch {
           if (!mounted) return;
           setFlashSaleProducts([]);
