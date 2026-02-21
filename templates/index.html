@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -13,8 +14,8 @@
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@derukkies" />
-    <script type="module" crossorigin src="/static/assets/index.js"></script>
-    <link rel="stylesheet" crossorigin href="/static/assets/index.css">
+    <script type="module" crossorigin src="{% static 'assets/index.js' %}"></script>
+    <link rel="stylesheet" crossorigin href="{% static 'assets/index.css' %}">
   </head>
 
   <body>

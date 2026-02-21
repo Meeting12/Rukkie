@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, copyFileSync, readdirSync, statSync } from 'fs';
+import { mkdirSync, rmSync, copyFileSync, readdirSync, statSync, readFileSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -32,9 +32,17 @@ try {
 // Copy assets
 copyRecursive(buildAssets, staticAssets);
 
-// Copy index.html -> templates/index.html
+// Copy index.html -> templates/index.html (Django static template)
 try { mkdirSync(templatesDir, { recursive: true }); } catch (e) {}
-copyFileSync(join(buildDir, 'index.html'), targetIndex);
+const sourceIndex = readFileSync(join(buildDir, 'index.html'), 'utf8');
+let djangoIndex = sourceIndex;
+if (!djangoIndex.startsWith('{% load static %}')) {
+  djangoIndex = `{% load static %}\n${djangoIndex}`;
+}
+djangoIndex = djangoIndex
+  .replace(/src="\/static\/assets\/index\.js"/g, 'src="{% static \'assets/index.js\' %}"')
+  .replace(/href="\/static\/assets\/index\.css"/g, 'href="{% static \'assets/index.css\' %}"');
+writeFileSync(targetIndex, djangoIndex, 'utf8');
 
 console.log('Copied build assets to', staticAssets);
 console.log('Copied index.html to', targetIndex);

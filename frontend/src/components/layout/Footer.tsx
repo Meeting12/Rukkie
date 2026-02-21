@@ -41,6 +41,7 @@ const socialLinks = [
 export const Footer = () => {
   const [email, setEmail] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
+  const currentYear = new Date().getFullYear();
 
   const parseApiErrorMessage = (raw: string) => {
     try {
@@ -206,7 +207,7 @@ export const Footer = () => {
         <div className="mt-12 pt-8 border-t border-background/10">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm text-background/60">
-              © 2024 De-Rukkies Collections. All rights reserved.
+              &copy; {currentYear} De-Rukkies Collections. All rights reserved.
             </p>
             
             {/* Social Links */}

@@ -3,6 +3,12 @@ import { ChevronDown } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 
 const PrivacyPolicy = () => {
+  const currentDate = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(new Date());
+
   return (
     <Layout>
       <div className="bg-secondary/30 py-8">
@@ -15,7 +21,7 @@ const PrivacyPolicy = () => {
           <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground">
             Privacy Policy
           </h1>
-          <p className="text-muted-foreground mt-2">Last updated: February 6, 2026</p>
+          <p className="text-muted-foreground mt-2">Last updated: {currentDate}</p>
         </div>
       </div>
 
