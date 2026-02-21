@@ -86,9 +86,7 @@ def _normalize_cloudinary_delivery_url(url: str) -> str:
         return cleaned
 
     path = (parsed.path or '').replace('\\', '/')
-    # Some legacy rows were saved as "media/products/..." while Cloudinary public_id is "products/...".
-    path = re.sub(r'(?i)/image/upload/v1/media/', '/image/upload/v1/', path)
-    path = re.sub(r'(?i)/image/upload/media/', '/image/upload/', path)
+    # Keep delivered Cloudinary path as-is. We only normalize slashes and placeholders.
     path_segments = [seg for seg in path.split('/') if seg]
     current_cloud_name = unquote(path_segments[0]).strip() if path_segments else ''
     cloud_name = _cloudinary_cloud_name()
@@ -149,8 +147,8 @@ def _fallback_image_url_from_name(name: str, upload_prefix: str = '') -> str:
         media_relative = cleaned[len('media/'):]
         if cloud_name and media_relative.startswith(('products/', 'categories/', 'hero/')):
             return f'https://res.cloudinary.com/{cloud_name}/image/upload/{quote(cleaned, safe="/")}'
-        return f'/{cleaned}' 
-            
+        return f'/{cleaned}'
+
     if cleaned.startswith(('products/', 'categories/', 'hero/')):
         cloud_name = _cloudinary_cloud_name()
         if cloud_name:

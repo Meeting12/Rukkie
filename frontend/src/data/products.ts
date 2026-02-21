@@ -8,9 +8,7 @@ function isPlaceholderCloudinaryUrl(value: string): boolean {
 }
 
 function normalizeLegacyCloudinaryUrl(value: string): string {
-  return String(value || "")
-    .replace(/\/image\/upload\/v1\/media\//i, "/image/upload/v1/")
-    .replace(/\/image\/upload\/media\//i, "/image/upload/");
+  return String(value || "");
 }
 
 function normalizeImageUrl(value: any): string {
