@@ -204,9 +204,41 @@ def _resolve_image_url(field_file, request=None) -> str:
     except Exception:
         raw_url = ''
 
-    # If storage already returns an absolute URL, keep it unchanged.
-    # This keeps API image URLs aligned with Django admin rendering.
-    if raw_url.startswith('http://') or raw_url.startswith('https://'):
+    raw_name = ''
+    try:
+        raw_name = str(getattr(field_file, 'name', '') or '').strip()
+    except Exception:
+        raw_name = ''
+
+    # For Cloudinary, use name-based fallback only when the URL is clearly
+    # placeholder/broken or misses the `media/` namespace present in stored name.
+    if (
+        raw_url.startswith(('http://', 'https://'))
+        and 'res.cloudinary.com/' in raw_url
+        and raw_name
+    ):
+        name_based_url = _fallback_image_url_from_name(
+            raw_name, upload_prefix=upload_prefix
+        )
+        if name_based_url.startswith(('http://', 'https://')):
+            raw_lower = raw_url.lower()
+            needs_name_based_repair = (
+                '<cloud_name>' in raw_lower
+                or '%3ccloud_name%3e' in raw_lower
+                or 'your_cloud_name' in raw_lower
+            )
+            if (
+                not needs_name_based_repair
+                and raw_name.startswith('media/')
+                and '/image/upload/media/' not in raw_lower
+                and '/image/upload/v1/media/' not in raw_lower
+            ):
+                needs_name_based_repair = True
+            if needs_name_based_repair:
+                return name_based_url
+
+    # If storage returns another absolute URL, keep it unchanged.
+    if raw_url.startswith(('http://', 'https://')):
         return raw_url
 
     url = _fallback_image_url_from_name(
