@@ -23,13 +23,24 @@ function isPlaceholderCloudinaryUrl(value: string): boolean {
   return normalized.includes("<cloud_name>") || normalized.includes("%3ccloud_name%3e");
 }
 
+function normalizeLegacyCloudinaryUrl(value: string): string {
+  return String(value || "")
+    .replace(/\/image\/upload\/v1\/media\//i, "/image/upload/")
+    .replace(/\/image\/upload\/media\//i, "/image/upload/")
+    .replace(/\/image\/upload\/v1\/(products|categories|hero)\//i, "/image/upload/$1/");
+}
+
 function normalizeImageUrl(value: any): string {
   const raw = typeof value === "string" ? value : (value?.image_url || value?.image || value?.url || "");
-  const cleaned = String(raw || "").trim().replace(/\\/g, "/");
+  let cleaned = String(raw || "").trim().replace(/\\/g, "/");
   if (!cleaned) return CART_PLACEHOLDER_IMAGE;
   if (isPlaceholderCloudinaryUrl(cleaned)) return CART_PLACEHOLDER_IMAGE;
-  if (/^https?:\/\//i.test(cleaned) || cleaned.startsWith("data:")) return cleaned;
-  if (cleaned.startsWith("res.cloudinary.com/")) return `https://${cleaned}`;
+  if (cleaned.startsWith("//")) cleaned = `https:${cleaned}`;
+  if (/^https?:\/\//i.test(cleaned) || cleaned.startsWith("data:")) {
+    if (cleaned.includes("res.cloudinary.com/")) return normalizeLegacyCloudinaryUrl(cleaned);
+    return cleaned;
+  }
+  if (cleaned.startsWith("res.cloudinary.com/")) return normalizeLegacyCloudinaryUrl(`https://${cleaned}`);
   if (cleaned.startsWith("/")) return cleaned;
   if (cleaned.startsWith("media/")) return `/${cleaned}`;
   if (cleaned.startsWith("products/")) return `/media/${cleaned}`;

@@ -7,6 +7,13 @@ function isPlaceholderCloudinaryUrl(value: string): boolean {
   return normalized.includes("<cloud_name>") || normalized.includes("%3ccloud_name%3e");
 }
 
+function normalizeLegacyCloudinaryUrl(value: string): string {
+  return String(value || "")
+    .replace(/\/image\/upload\/v1\/media\//i, "/image/upload/")
+    .replace(/\/image\/upload\/media\//i, "/image/upload/")
+    .replace(/\/image\/upload\/v1\/(products|categories|hero)\//i, "/image/upload/$1/");
+}
+
 function normalizeImageUrl(value: any): string {
   const raw = typeof value === "string" ? value : (value?.image_url || value?.image || value?.url || "");
   let cleaned = String(raw || "").trim().replace(/\\/g, "/");
@@ -19,14 +26,18 @@ function normalizeImageUrl(value: any): string {
   if (cleaned.startsWith("http:/") && !cleaned.startsWith("http://")) {
     cleaned = cleaned.replace("http:/", "http://");
   }
-  if (cleaned.startsWith("//")) return `https:${cleaned}`;
-  if (/^https?:\/\//i.test(cleaned) || cleaned.startsWith("data:")) return cleaned;
+  if (cleaned.startsWith("//")) cleaned = `https:${cleaned}`;
+  if (/^https?:\/\//i.test(cleaned) || cleaned.startsWith("data:")) {
+    if (cleaned.includes("res.cloudinary.com/")) {
+      const candidate = normalizeLegacyCloudinaryUrl(cleaned);
+      return isPlaceholderCloudinaryUrl(candidate) ? PLACEHOLDER_IMAGE : candidate;
+    }
+    return cleaned;
+  }
 
   const cloudinaryIndex = cleaned.indexOf("res.cloudinary.com/");
   if (cloudinaryIndex >= 0) {
-    const candidate = `https://${cleaned.slice(cloudinaryIndex)}`
-      .replace("/image/upload/v1/media/", "/image/upload/v1/")
-      .replace("/image/upload/media/", "/image/upload/");
+    const candidate = normalizeLegacyCloudinaryUrl(`https://${cleaned.slice(cloudinaryIndex)}`);
     return isPlaceholderCloudinaryUrl(candidate) ? PLACEHOLDER_IMAGE : candidate;
   }
 

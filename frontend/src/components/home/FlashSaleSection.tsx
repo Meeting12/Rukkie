@@ -46,18 +46,26 @@ export const FlashSaleSection = () => {
 
   useEffect(() => {
     let mounted = true;
+    const shuffle = <T,>(items: T[]): T[] => {
+      const list = [...items];
+      for (let i = list.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    };
     const load = async () => {
       try {
         const list = await fetchProducts();
         if (!mounted) return;
         const items = Array.isArray(list) ? list : [];
-        setFlashSaleProducts(items.filter((p: any) => !!p.isFlashSale).slice(0, 8));
+        setFlashSaleProducts(shuffle(items.filter((p: any) => !!p.isFlashSale)));
       } catch (e) {
         try {
           const mod = await import("@/data/products");
           if (!mounted) return;
           const local = mod.getFlashSaleProducts();
-          setFlashSaleProducts(local.slice(0, 8));
+          setFlashSaleProducts(shuffle(local));
         } catch {
           if (!mounted) return;
           setFlashSaleProducts([]);

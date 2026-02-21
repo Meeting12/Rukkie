@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import os
+import re
 from urllib.parse import urlparse, quote, unquote
 from .models import (
     Product,
@@ -86,8 +87,9 @@ def _normalize_cloudinary_delivery_url(url: str) -> str:
 
     path = (parsed.path or '').replace('\\', '/')
     # Some legacy rows were saved as "media/products/..." while Cloudinary public_id is "products/...".
-    path = path.replace('/image/upload/v1/media/', '/image/upload/v1/')
-    path = path.replace('/image/upload/media/', '/image/upload/')
+    path = re.sub(r'(?i)/image/upload/v1/media/', '/image/upload/', path)
+    path = re.sub(r'(?i)/image/upload/media/', '/image/upload/', path)
+    path = re.sub(r'(?i)/image/upload/v1/(products|categories|hero)/', r'/image/upload/\1/', path)
     path_segments = [seg for seg in path.split('/') if seg]
     current_cloud_name = unquote(path_segments[0]).strip() if path_segments else ''
     cloud_name = _cloudinary_cloud_name()

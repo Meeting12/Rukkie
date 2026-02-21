@@ -258,7 +258,7 @@ const Account = () => {
           </div>
         </div>
 
-        <div className="container mx-auto px-4 py-12">
+        <div className="container mx-auto overflow-x-hidden px-4 py-12">
           <div className="max-w-md mx-auto">
             <Tabs value={authTab} onValueChange={(value) => setAuthTab(value as "login" | "register")} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
@@ -331,7 +331,7 @@ const Account = () => {
                           required
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label htmlFor="firstName">First Name</Label>
                           <Input
@@ -520,14 +520,14 @@ const Account = () => {
     if (activeSection === "profile") {
       return (
         <form className="space-y-6">
-          <div className="flex items-center gap-6">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-6">
             <div className="h-20 w-20 rounded-full bg-primary/20 flex items-center justify-center">
               <User className="h-10 w-10 text-primary" />
             </div>
             <Button variant="outline">Change Photo</Button>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>First Name</Label>
               <Input defaultValue="John" />
@@ -684,7 +684,7 @@ const Account = () => {
                   {address.line2 ? `, ${address.line2}` : ""}, {address.city}, {address.state || ""} {address.postal_code}, {address.country}
                 </p>
                 {address.phone && <p className="text-xs text-muted-foreground mt-1">{address.phone}</p>}
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Button type="button" size="sm" variant="outline" onClick={() => editAddress(address)}>
                     Edit
                   </Button>
@@ -756,7 +756,7 @@ const Account = () => {
           </div>
           {notifications.map((row) => (
             <div key={row.id} className={`rounded-lg border p-4 ${row.is_read ? "border-border" : "border-primary/40 bg-primary/5"}`}>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{row.title}</p>
                   <p className="text-sm text-muted-foreground mt-1 break-words">{row.message}</p>
@@ -790,7 +790,7 @@ const Account = () => {
           </div>
           {mailbox.map((row) => (
             <div key={row.id} className={`rounded-lg border p-4 ${row.is_read ? "border-border" : "border-primary/40 bg-primary/5"}`}>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{row.subject}</p>
                   <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap break-words">{row.body}</p>
@@ -833,7 +833,7 @@ const Account = () => {
       </div>
 
       <div className="container mx-auto px-4 py-8 md:py-12">
-        <div className="grid lg:grid-cols-4 gap-6 lg:gap-8">
+        <div className="grid gap-6 lg:grid-cols-4 lg:gap-8">
           {/* Desktop Sidebar */}
           <div className="hidden lg:block lg:col-span-1">
             <nav className="space-y-2">
@@ -862,13 +862,13 @@ const Account = () => {
           </div>
 
           {/* Main Content */}
-          <div className="lg:col-span-3 space-y-4">
+          <div className="space-y-4 overflow-x-hidden lg:col-span-3">
             {/* Mobile Account Header */}
             <div className="lg:hidden rounded-xl border border-border bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Signed in as</p>
-                  <p className="text-base font-semibold truncate max-w-[12rem]">{username || "Account User"}</p>
+                  <p className="max-w-[12rem] truncate text-base font-semibold sm:max-w-[16rem]">{username || "Account User"}</p>
                 </div>
                 <Button
                   type="button"
@@ -888,27 +888,27 @@ const Account = () => {
             </div>
 
             {/* Mobile Section Switcher */}
-            <div className="lg:hidden w-full overflow-x-auto pb-1">
-              <div className="inline-flex min-w-max gap-2">
+            <div className="lg:hidden w-full pb-1">
+              <div className="grid grid-cols-2 gap-2">
                 {menuItems.map((item) => (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => setActiveSection(item.id)}
-                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-3 py-2 text-sm transition-colors ${
+                    className={`inline-flex w-full items-center justify-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors ${
                       activeSection === item.id
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border bg-card text-foreground hover:bg-secondary"
                     }`}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span>{item.label}</span>
+                    <span className="truncate">{item.label}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            <Card>
+            <Card className="overflow-x-hidden">
               <CardHeader>
                 <CardTitle>{sectionMeta[activeSection].title}</CardTitle>
                 <CardDescription>{sectionMeta[activeSection].description}</CardDescription>
