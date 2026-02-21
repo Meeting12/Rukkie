@@ -191,25 +191,49 @@ def _fallback_image_url_from_name(name: str, upload_prefix: str = '') -> str:
 def _resolve_image_url(field_file, request=None) -> str:
     if not field_file:
         return ''
+
     upload_prefix = ''
     try:
-        upload_prefix = str(getattr(getattr(field_file, 'field', None), 'upload_to', '') or '').strip()
+        upload_prefix = str(
+            getattr(getattr(field_file, 'field', None), 'upload_to', '') or ''
+        ).strip()
     except Exception:
         upload_prefix = ''
+
     raw_url = ''
     try:
         raw_url = str(field_file.url or '').strip()
     except Exception:
         raw_url = ''
-    url = _fallback_image_url_from_name(raw_url, upload_prefix=upload_prefix) if raw_url else ''
+
+    # ==============================
+    # 🔥 CORRECTION ADDED HERE
+    # If Cloudinary already returned a FULL absolute URL,
+    # return it immediately and DO NOT pass through fallback.
+    # This prevents rewriting Cloudinary URLs like:
+    # https://res.cloudinary.com/...
+    # ==============================
+    if raw_url.startswith('http://') or raw_url.startswith('https://'):
+        return raw_url
+    # ==============================
+
+    url = _fallback_image_url_from_name(
+        raw_url, upload_prefix=upload_prefix
+    ) if raw_url else ''
+
     if not url:
-        url = _fallback_image_url_from_name(getattr(field_file, 'name', ''), upload_prefix=upload_prefix)
+        url = _fallback_image_url_from_name(
+            getattr(field_file, 'name', ''),
+            upload_prefix=upload_prefix
+        )
+
     if not url:
         return ''
+
     if request and url.startswith('/'):
         return request.build_absolute_uri(url)
-    return url
 
+    return url
 
 class ProductImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
