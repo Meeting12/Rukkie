@@ -209,16 +209,17 @@ def _resolve_image_url(field_file, request=None) -> str:
         raw_name = str(getattr(field_file, 'name', '') or '').strip()
     except Exception:
         raw_name = ''
+    normalized_name = raw_name.replace('\\', '/').lstrip('/')
 
     # For Cloudinary, use name-based fallback only when the URL is clearly
     # placeholder/broken or misses the `media/` namespace present in stored name.
     if (
         raw_url.startswith(('http://', 'https://'))
         and 'res.cloudinary.com/' in raw_url
-        and raw_name
+        and normalized_name
     ):
         name_based_url = _fallback_image_url_from_name(
-            raw_name, upload_prefix=upload_prefix
+            normalized_name, upload_prefix=upload_prefix
         )
         if name_based_url.startswith(('http://', 'https://')):
             raw_lower = raw_url.lower()
@@ -229,7 +230,7 @@ def _resolve_image_url(field_file, request=None) -> str:
             )
             if (
                 not needs_name_based_repair
-                and raw_name.startswith('media/')
+                and normalized_name.startswith('media/')
                 and '/image/upload/media/' not in raw_lower
                 and '/image/upload/v1/media/' not in raw_lower
             ):
@@ -247,7 +248,7 @@ def _resolve_image_url(field_file, request=None) -> str:
 
     if not url:
         url = _fallback_image_url_from_name(
-            getattr(field_file, 'name', ''),
+            normalized_name,
             upload_prefix=upload_prefix
         )
 
