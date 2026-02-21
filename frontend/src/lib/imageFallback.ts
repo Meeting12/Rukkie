@@ -12,6 +12,24 @@ function stripQueryHash(url: string): { base: string; suffix: string } {
   return { base: input.slice(0, cut), suffix: input.slice(cut) };
 }
 
+function stripKnownCloudinaryPrefixes(value: string): string {
+  let out = String(value || "").replace(/^\/+/, "");
+  out = out.replace(/^v\d+\/media\//i, "");
+  out = out.replace(/^v\d+\//i, "");
+  out = out.replace(/^media\//i, "");
+  return out;
+}
+
+function splitUploadUrl(base: string): { prefix: string; tail: string } | null {
+  const marker = "/image/upload/";
+  const idx = String(base || "").indexOf(marker);
+  if (idx < 0) return null;
+  return {
+    prefix: base.slice(0, idx + marker.length),
+    tail: base.slice(idx + marker.length).replace(/^\/+/, ""),
+  };
+}
+
 export function getCloudinaryRetryCandidates(src: string): string[] {
   const normalized = String(src || "").replace(/^http:\/\//i, "https://");
   if (!normalized.includes("res.cloudinary.com/")) return [];
@@ -29,6 +47,8 @@ export function getCloudinaryRetryCandidates(src: string): string[] {
 
   const variants = [base];
   const folders = ["products", "categories", "hero"];
+  const uploadParts = splitUploadUrl(base);
+
   for (const folder of folders) {
     variants.push(base.replace(`/image/upload/${folder}/`, `/image/upload/v1/${folder}/`));
     variants.push(base.replace(`/image/upload/v1/${folder}/`, `/image/upload/${folder}/`));
@@ -36,6 +56,35 @@ export function getCloudinaryRetryCandidates(src: string): string[] {
     variants.push(base.replace(`/image/upload/media/${folder}/`, `/image/upload/${folder}/`));
     variants.push(base.replace(`/image/upload/v1/${folder}/`, `/image/upload/v1/media/${folder}/`));
     variants.push(base.replace(`/image/upload/v1/media/${folder}/`, `/image/upload/v1/${folder}/`));
+  }
+
+  if (uploadParts) {
+    const tailVariants = new Set<string>();
+    const wrappers = ["", "v1/", "media/", "v1/media/"];
+    const rawTail = uploadParts.tail;
+    const normalizedTail = stripKnownCloudinaryPrefixes(rawTail);
+    tailVariants.add(rawTail);
+    tailVariants.add(normalizedTail);
+
+    let publicId = normalizedTail;
+    const hasKnownFolder = folders.some((folder) => normalizedTail.toLowerCase().startsWith(`${folder}/`));
+    if (hasKnownFolder) {
+      publicId = normalizedTail.split("/").slice(1).join("/");
+      if (publicId) tailVariants.add(publicId);
+    }
+
+    if (publicId) {
+      for (const folder of folders) {
+        tailVariants.add(`${folder}/${publicId}`);
+      }
+    }
+
+    for (const wrapper of wrappers) {
+      for (const tail of tailVariants) {
+        if (!tail) continue;
+        variants.push(`${uploadParts.prefix}${wrapper}${tail}`);
+      }
+    }
   }
 
   for (const variant of variants) {
@@ -79,4 +128,3 @@ export function advanceImageFallback(target: HTMLImageElement, fallbackSrc: stri
 
   target.src = fallbackSrc;
 }
-

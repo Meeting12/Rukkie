@@ -1,4 +1,4 @@
-from rest_framework import serializers
+﻿from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import os
@@ -87,9 +87,8 @@ def _normalize_cloudinary_delivery_url(url: str) -> str:
 
     path = (parsed.path or '').replace('\\', '/')
     # Some legacy rows were saved as "media/products/..." while Cloudinary public_id is "products/...".
-    path = re.sub(r'(?i)/image/upload/v1/media/', '/image/upload/', path)
+    path = re.sub(r'(?i)/image/upload/v1/media/', '/image/upload/v1/', path)
     path = re.sub(r'(?i)/image/upload/media/', '/image/upload/', path)
-    path = re.sub(r'(?i)/image/upload/v1/(products|categories|hero)/', r'/image/upload/\1/', path)
     path_segments = [seg for seg in path.split('/') if seg]
     current_cloud_name = unquote(path_segments[0]).strip() if path_segments else ''
     cloud_name = _cloudinary_cloud_name()
@@ -207,16 +206,10 @@ def _resolve_image_url(field_file, request=None) -> str:
     except Exception:
         raw_url = ''
 
-    # ==============================
-    # 🔥 CORRECTION ADDED HERE
-    # If Cloudinary already returned a FULL absolute URL,
-    # return it immediately and DO NOT pass through fallback.
-    # This prevents rewriting Cloudinary URLs like:
-    # https://res.cloudinary.com/...
-    # ==============================
+    # If storage already returns an absolute URL, keep it unchanged.
+    # This keeps API image URLs aligned with Django admin rendering.
     if raw_url.startswith('http://') or raw_url.startswith('https://'):
         return raw_url
-    # ==============================
 
     url = _fallback_image_url_from_name(
         raw_url, upload_prefix=upload_prefix
@@ -235,6 +228,7 @@ def _resolve_image_url(field_file, request=None) -> str:
         return request.build_absolute_uri(url)
 
     return url
+
 
 class ProductImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -416,3 +410,4 @@ class UserMailboxMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserMailboxMessage
         fields = ['id', 'subject', 'body', 'category', 'is_read', 'read_at', 'created_at', 'updated_at']
+

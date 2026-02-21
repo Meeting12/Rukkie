@@ -24,9 +24,8 @@ function isPlaceholderCloudinaryUrl(value: string): boolean {
 
 function normalizeLegacyCloudinaryUrl(value: string): string {
   return String(value || "")
-    .replace(/\/image\/upload\/v1\/media\//i, "/image/upload/")
-    .replace(/\/image\/upload\/media\//i, "/image/upload/")
-    .replace(/\/image\/upload\/v1\/(products|categories|hero)\//i, "/image/upload/$1/");
+    .replace(/\/image\/upload\/v1\/media\//i, "/image/upload/v1/")
+    .replace(/\/image\/upload\/media\//i, "/image/upload/");
 }
 
 function normalizeImageUrl(value: any): string {
