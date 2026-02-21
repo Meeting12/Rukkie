@@ -150,7 +150,7 @@ def _fallback_image_url_from_name(name: str, upload_prefix: str = '') -> str:
         media_relative = cleaned[len('media/'):]
         if cloud_name and media_relative.startswith(('products/', 'categories/', 'hero/')):
             return f'https://res.cloudinary.com/{cloud_name}/image/upload/{quote(cleaned, safe="/")}'
-        return f'/{cleaned}'
+        return f'/{cleaned}' 
             
     if cleaned.startswith(('products/', 'categories/', 'hero/')):
         cloud_name = _cloudinary_cloud_name()
