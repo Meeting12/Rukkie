@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from .models import (
     Product, Cart, CartItem, Order, OrderItem, ShippingMethod, Address, Category,
     ContactMessage, NewsletterSubscription, PaymentTransaction, HomeHeroSlide, Wishlist, ProductReview, AssistantPolicy,
-    UserNotification, UserMailboxMessage,
+    UserNotification, UserMailboxMessage, Page,
 )
 from django.db.models import Count, Q, Avg
 from .serializers import (
@@ -44,6 +44,11 @@ from django.views.decorators.csrf import csrf_exempt
 from ipaddress import ip_address
 
 logger = logging.getLogger(__name__)
+STOREFRONT_THEME_PAGE_SLUG = 'storefront-theme-preset'
+STOREFRONT_THEME_PAGE_TITLE = 'Storefront Theme Preset'
+STOREFRONT_THEME_DEFAULT = 'default'
+STOREFRONT_THEME_LUXURY = 'luxury-beauty'
+STOREFRONT_THEME_CHOICES = {STOREFRONT_THEME_DEFAULT, STOREFRONT_THEME_LUXURY}
 PAID_ORDER_STATUSES = (
     Order.STATUS_PAID,
     Order.STATUS_PROCESSING,
@@ -88,6 +93,35 @@ def _lookup_location_by_ip(ip):
 def _get_device_name(request):
     ua = request.META.get('HTTP_USER_AGENT', '') or 'Unknown Device'
     return ua[:240]
+
+
+def _get_storefront_theme_value():
+    page = Page.objects.filter(slug=STOREFRONT_THEME_PAGE_SLUG).only('content').first()
+    raw_value = (getattr(page, 'content', '') or '').strip().lower()
+    if raw_value in STOREFRONT_THEME_CHOICES:
+        return raw_value
+    return STOREFRONT_THEME_DEFAULT
+
+
+def _set_storefront_theme_value(theme_value: str) -> str:
+    normalized = (str(theme_value or '').strip().lower() or STOREFRONT_THEME_DEFAULT)
+    if normalized not in STOREFRONT_THEME_CHOICES:
+        normalized = STOREFRONT_THEME_DEFAULT
+    page, created = Page.objects.get_or_create(
+        slug=STOREFRONT_THEME_PAGE_SLUG,
+        defaults={
+            'title': STOREFRONT_THEME_PAGE_TITLE,
+            'content': normalized,
+            'seo_description': 'Global storefront theme preset.',
+            'seo_keywords': 'storefront,theme,preset',
+        },
+    )
+    if not created and page.content != normalized:
+        page.content = normalized
+        if not page.title:
+            page.title = STOREFRONT_THEME_PAGE_TITLE
+        page.save(update_fields=['content', 'title', 'updated_at'])
+    return normalized
 
 
 def _safe_send_email(*, subject, message, recipient_list, event_name):
@@ -2900,6 +2934,39 @@ def paypal_webhook(request):
         raw_response={'event': event_type, 'payload': event},
     )
     return Response({'ok': True})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """Lightweight health endpoint for platform probes."""
+    return Response({'ok': True})
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def storefront_theme(request):
+    """Read/update the global storefront visual theme preset."""
+    if request.method == 'GET':
+        return Response({
+            'theme': _get_storefront_theme_value(),
+            'available_themes': [STOREFRONT_THEME_DEFAULT, STOREFRONT_THEME_LUXURY],
+        })
+
+    user = getattr(request, 'user', None)
+    if not user or not user.is_authenticated or not user.is_staff:
+        return Response({'detail': 'Admin login required.'}, status=403)
+
+    requested_theme = request.data.get('theme')
+    applied_theme = _set_storefront_theme_value(requested_theme)
+    logger.info(
+        'storefront.theme updated_by=%s user_id=%s theme=%s ip=%s',
+        getattr(user, 'username', 'unknown'),
+        getattr(user, 'id', None),
+        applied_theme,
+        _get_client_ip(request),
+    )
+    return Response({'ok': True, 'theme': applied_theme})
 
 
 @api_view(['GET'])

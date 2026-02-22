@@ -78,6 +78,58 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     --shadow-product: 0 8px 30px -10px hsl(345 70% 35% / 0.3);
   }
 
+  html[data-storefront-theme="luxury-beauty"] {
+    --background: 34 38% 94%;
+    --foreground: 20 19% 19%;
+
+    --card: 32 34% 97%;
+    --card-foreground: 20 19% 19%;
+
+    --popover: 32 34% 98%;
+    --popover-foreground: 20 19% 19%;
+
+    --primary: 42 43% 60%;
+    --primary-foreground: 26 21% 19%;
+    --primary-hover: 42 43% 54%;
+
+    --secondary: 35 28% 90%;
+    --secondary-foreground: 20 15% 24%;
+
+    --muted: 34 23% 90%;
+    --muted-foreground: 26 11% 44%;
+
+    --accent: 39 45% 95%;
+    --accent-foreground: 33 40% 35%;
+
+    --destructive: 0 72% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 34 24% 82%;
+    --input: 34 24% 82%;
+    --ring: 42 43% 60%;
+
+    --brand-gold: 42 43% 60%;
+    --brand-charcoal: 20 19% 19%;
+    --brand-cream: 34 38% 94%;
+    --brand-wine-light: 34 23% 90%;
+    --brand-wine-dark: 33 29% 31%;
+
+    --sidebar-background: 34 28% 93%;
+    --sidebar-foreground: 20 15% 24%;
+    --sidebar-primary: 42 43% 60%;
+    --sidebar-primary-foreground: 26 21% 19%;
+    --sidebar-accent: 39 45% 95%;
+    --sidebar-accent-foreground: 33 40% 35%;
+    --sidebar-border: 34 24% 82%;
+    --sidebar-ring: 42 43% 60%;
+
+    --shadow-sm: 0 1px 2px 0 hsl(30 20% 30% / 0.05);
+    --shadow-md: 0 6px 18px -8px hsl(28 24% 24% / 0.10);
+    --shadow-lg: 0 16px 32px -14px hsl(28 24% 24% / 0.13);
+    --shadow-xl: 0 24px 45px -20px hsl(28 24% 24% / 0.14);
+    --shadow-product: 0 18px 36px -18px hsl(42 43% 55% / 0.30);
+  }
+
   .dark {
     --background: 220 20% 8%;
     --foreground: 220 15% 95%;
@@ -124,9 +176,23 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     overflow-x: hidden;
   }
 
+  html[data-storefront-theme="luxury-beauty"] body {
+    background-image:
+      radial-gradient(circle at 12% 8%, hsl(42 43% 60% / 0.10), transparent 35%),
+      radial-gradient(circle at 90% 14%, hsl(34 45% 98% / 0.95), transparent 38%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(34 35% 93%) 100%);
+    background-attachment: fixed;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-serif);
     @apply font-semibold tracking-tight;
+  }
+
+  html[data-storefront-theme="luxury-beauty"] h1,
+  html[data-storefront-theme="luxury-beauty"] h2,
+  html[data-storefront-theme="luxury-beauty"] h3 {
+    letter-spacing: 0.01em;
   }
 }
 
@@ -136,10 +202,22 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     background: linear-gradient(135deg, hsl(var(--background)) 0%, hsl(0 0% 10%) 50%, hsl(var(--brand-wine-light)) 100%);
   }
 
+  html[data-storefront-theme="luxury-beauty"] .hero-gradient {
+    background:
+      linear-gradient(135deg, hsl(34 38% 95%) 0%, hsl(33 40% 92%) 48%, hsl(39 44% 88%) 100%);
+  }
+
   /* Product card hover effect */
   .product-card {
     @apply relative overflow-hidden rounded-lg bg-card transition-all duration-300;
     box-shadow: var(--shadow-sm);
+  }
+
+  html[data-storefront-theme="luxury-beauty"] .product-card {
+    @apply rounded-xl;
+    box-shadow: var(--shadow-md);
+    border: 1px solid hsl(var(--border) / 0.75);
+    background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(34 30% 96%) 100%);
   }
 
   .product-card:hover {
@@ -173,6 +251,12 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     @apply relative overflow-hidden rounded-xl cursor-pointer;
   }
 
+  html[data-storefront-theme="luxury-beauty"] .category-card {
+    box-shadow: var(--shadow-md);
+    border: 1px solid hsl(var(--border) / 0.65);
+    background: hsl(34 38% 94%);
+  }
+
   .category-card::after {
     content: '';
     @apply absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/20 to-transparent transition-opacity duration-300;
@@ -187,6 +271,11 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     @apply bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-4 text-base font-medium tracking-wide transition-all duration-300;
   }
 
+  html[data-storefront-theme="luxury-beauty"] .btn-hero {
+    @apply rounded-full;
+    box-shadow: 0 14px 28px -16px hsl(var(--primary) / 0.8);
+  }
+
   .btn-hero:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 20px -10px hsl(var(--primary) / 0.5);
@@ -196,9 +285,19 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     @apply border-2 border-foreground/20 text-foreground hover:border-primary hover:text-primary bg-transparent px-6 py-3 transition-all duration-300;
   }
 
+  html[data-storefront-theme="luxury-beauty"] .btn-outline-elegant {
+    @apply rounded-full;
+    border-color: hsl(var(--foreground) / 0.2);
+    background: hsl(0 0% 100% / 0.45);
+  }
+
   /* Section styling */
   .section-padding {
     @apply py-16 md:py-24;
+  }
+
+  html[data-storefront-theme="luxury-beauty"] .section-padding {
+    @apply py-20 md:py-28;
   }
 
   /* Breadcrumb styling */
@@ -224,6 +323,10 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
   /* Newsletter input */
   .newsletter-input {
     @apply bg-background/10 border-background/30 text-foreground placeholder:text-foreground/60 focus:border-background focus:ring-background;
+  }
+
+  html[data-storefront-theme="luxury-beauty"] .newsletter-input {
+    @apply bg-white/70 border-border text-foreground placeholder:text-muted-foreground;
   }
 
   /* Rating stars */
@@ -334,6 +437,36 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
 
   .force-normal-case {
     text-transform: none !important;
+  }
+
+  html[data-storefront-theme="luxury-beauty"] header.sticky {
+    background: hsl(var(--background) / 0.92) !important;
+    border-bottom-color: hsl(var(--border) / 0.8) !important;
+    box-shadow: 0 10px 25px -22px hsl(25 20% 20% / 0.45);
+  }
+
+  html[data-storefront-theme="luxury-beauty"] header.sticky > div:first-child {
+    background: linear-gradient(90deg, hsl(42 43% 60%) 0%, hsl(38 38% 67%) 100%) !important;
+  }
+
+  html[data-storefront-theme="luxury-beauty"] footer {
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+    border-top: 1px solid hsl(var(--primary) / 0.35);
+  }
+
+  html[data-storefront-theme="luxury-beauty"] footer .border-b,
+  html[data-storefront-theme="luxury-beauty"] footer .border-t {
+    border-color: hsl(var(--primary) / 0.15) !important;
+  }
+
+  html[data-storefront-theme="luxury-beauty"] footer .text-background\/70,
+  html[data-storefront-theme="luxury-beauty"] footer .text-background\/60 {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  html[data-storefront-theme="luxury-beauty"] footer .text-background {
+    color: hsl(var(--foreground)) !important;
   }
 
   @keyframes promoTicker {

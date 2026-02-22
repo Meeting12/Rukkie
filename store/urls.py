@@ -15,8 +15,10 @@ from .views import (
     paypal_client_config,
     paypal_create_order,
     paypal_capture_order,
+    storefront_theme,
     payment_verify_mark_paid,
     get_shipping_methods,
+    health_check,
     auth_status,
     login_view,
     logout_view,
@@ -63,6 +65,8 @@ router.register(r'categories', CategoryViewSet, basename='category')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('health/', health_check, name='health-check'),
+    path('storefront/theme/', storefront_theme, name='storefront-theme'),
     # Auth endpoints for session-based auth checks
     path('auth/status/', auth_status, name='auth-status'),
     path('auth/login/', login_view, name='auth-login'),

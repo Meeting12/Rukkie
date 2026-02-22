@@ -11,6 +11,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { ChatBot } from "@/components/chat/ChatBot";
 import ScrollToTop from "@/components/ScrollToTop";
 import { prefetchProductsPage, fetchFeaturedProducts, fetchHomeContent } from "@/data/products";
+import { fetchJSON } from "@/lib/api";
 import Index from "./pages/Index";
 import Products from "./pages/Products";
 import ProductDetail from "./pages/ProductDetail";
@@ -30,12 +31,58 @@ import OrderSuccess from "./pages/OrderSuccess";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+const STOREFRONT_THEME_STORAGE_KEY = "rukkie_storefront_theme";
+
+const applyStorefrontTheme = (theme?: string | null) => {
+  const html = document.documentElement;
+  const normalized = (theme || "").trim().toLowerCase();
+  if (normalized === "luxury-beauty") {
+    html.setAttribute("data-storefront-theme", "luxury-beauty");
+    try {
+      localStorage.setItem(STOREFRONT_THEME_STORAGE_KEY, "luxury-beauty");
+    } catch {
+      // Ignore storage errors.
+    }
+    return;
+  }
+  html.removeAttribute("data-storefront-theme");
+  try {
+    localStorage.setItem(STOREFRONT_THEME_STORAGE_KEY, "default");
+  } catch {
+    // Ignore storage errors.
+  }
+};
 
 const AppShell = () => {
   useEffect(() => {
     prefetchProductsPage();
     void fetchFeaturedProducts();
     void fetchHomeContent();
+  }, []);
+
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(STOREFRONT_THEME_STORAGE_KEY);
+      if (cached) {
+        applyStorefrontTheme(cached);
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+
+    let isMounted = true;
+    void fetchJSON("/api/storefront/theme/")
+      .then((payload: any) => {
+        if (!isMounted) return;
+        applyStorefrontTheme(payload?.theme);
+      })
+      .catch(() => {
+        // Keep current UI stable; fail quietly.
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   return (

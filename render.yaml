@@ -8,7 +8,7 @@ services:
   - type: web
     name: rukkie-web
     env: python
-    healthCheckPath: /api/auth/status/
+    healthCheckPath: /api/health/
     buildCommand: |
       pip install -r requirements.txt &&
       npm install --prefix frontend &&

@@ -1,0 +1,36 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_("Django site admin") }}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'store/admin/admin-theme-toggle.css' %}">
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="{% static 'store/admin/admin-theme-toggle.js' %}" defer></script>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_("Django administration") }}</a></h1>
+{% endblock %}
+
+{% block userlinks %}
+{{ block.super }}
+<span class="rukkie-admin-theme-switcher">
+  <label for="rukkie-admin-theme-select" class="rukkie-admin-theme-label">Theme</label>
+  <select id="rukkie-admin-theme-select" class="rukkie-admin-theme-select" aria-label="Change admin theme">
+    <option value="default">Default</option>
+    <option value="luxury-beauty">Luxury Beauty (Storefront)</option>
+    <option value="midnight">Midnight</option>
+    <option value="sand">Sand</option>
+    <option value="forest">Forest</option>
+    <option value="ocean">Ocean</option>
+  </select>
+  <button type="button" id="rukkie-admin-theme-apply" class="rukkie-admin-theme-apply" aria-label="Apply selected admin theme">
+    Apply
+  </button>
+</span>
+{% endblock %}

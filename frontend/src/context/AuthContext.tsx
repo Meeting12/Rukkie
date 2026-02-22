@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 
 interface AuthState {
@@ -8,6 +8,7 @@ interface AuthState {
   loading: boolean;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
+  refreshAuth: (options?: { silent?: boolean }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -26,12 +27,19 @@ const getCookie = (name: string) => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const AUTH_RECHECK_ON_FOCUS_MS = 10 * 60 * 1000;
   const [isAuthenticated, setAuthenticated] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const isCheckingRef = useRef(false);
+  const lastCheckedAtRef = useRef<number>(0);
 
-  const check = async () => {
+  const check = useCallback(async (options?: { silent?: boolean }) => {
+    if (isCheckingRef.current) return;
+    isCheckingRef.current = true;
+    const silent = !!options?.silent;
+    if (!silent) setLoading(true);
     try {
       const resp = await axios.get('/api/auth/status/', { withCredentials: true });
       setAuthenticated(!!resp.data.is_authenticated);
@@ -40,13 +48,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAuthenticated(false);
       setUsername(null);
     } finally {
-      setLoading(false);
+      lastCheckedAtRef.current = Date.now();
+      isCheckingRef.current = false;
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    check();
-  }, []);
+    void check();
+  }, [check]);
+
+  useEffect(() => {
+    const maybeRefreshOnReturn = () => {
+      if (document.visibilityState === 'hidden') return;
+      const now = Date.now();
+      if (now - lastCheckedAtRef.current < AUTH_RECHECK_ON_FOCUS_MS) return;
+      void check({ silent: true });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        maybeRefreshOnReturn();
+      }
+    };
+
+    window.addEventListener('focus', maybeRefreshOnReturn);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', maybeRefreshOnReturn);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [check]);
 
   const login = async (username: string, password: string) => {
     setLastError(null);
@@ -61,6 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setAuthenticated(true);
         setUsername(resp.data.username);
         setLastError(null);
+        lastCheckedAtRef.current = Date.now();
         return true;
       }
     } catch (e: any) {
@@ -85,10 +118,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setAuthenticated(false);
     setUsername(null);
+    lastCheckedAtRef.current = Date.now();
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, username, lastError, loading, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, username, lastError, loading, login, logout, refreshAuth: check }}>
       {children}
     </AuthContext.Provider>
   );
