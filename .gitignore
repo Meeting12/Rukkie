@@ -27,12 +27,12 @@ venv/
 env/
 ENV/
 
-# Django
+# Django (ignore generated runtime dirs at project root only)
 db.sqlite3
 db.sqlite3-journal
-media/
-static/
-staticfiles/
+/media/
+/static/
+/staticfiles/
 
 # Celery
 celerybeat-schedule

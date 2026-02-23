@@ -1,0 +1,276 @@
+.rukkie-admin-theme-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.rukkie-admin-theme-label {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.rukkie-admin-theme-select {
+  min-width: 112px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  padding: 0 26px 0 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.rukkie-admin-theme-select:focus {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 1px;
+}
+
+.rukkie-admin-theme-select option {
+  color: #111827;
+}
+
+.rukkie-admin-theme-apply {
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.rukkie-admin-theme-apply:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.rukkie-admin-theme-apply:active {
+  transform: translateY(1px);
+}
+
+.rukkie-admin-theme-apply:focus {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 1px;
+}
+
+@media (max-width: 767px) {
+  .rukkie-admin-theme-switcher {
+    display: flex;
+    margin: 8px 0 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  #user-tools {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px 8px;
+  }
+}
+
+/* Theme presets: rely on Django admin CSS variables for broad coverage. */
+html[data-rukkie-admin-theme="midnight"] {
+  --primary: #0f172a;
+  --secondary: #111827;
+  --accent: #38bdf8;
+  --primary-fg: #f8fafc;
+  --body-fg: #e5e7eb;
+  --body-bg: #0b1220;
+  --body-quiet-color: #cbd5e1;
+  --body-medium-color: #cbd5e1;
+  --body-loud-color: #f8fafc;
+  --header-color: #f8fafc;
+  --header-branding-color: #f8fafc;
+  --header-bg: #0b1220;
+  --header-link-color: #cdefff;
+  --breadcrumbs-fg: #dbeafe;
+  --breadcrumbs-link-fg: #f0f9ff;
+  --breadcrumbs-bg: #111827;
+  --link-fg: #7dd3fc;
+  --link-hover-color: #bae6fd;
+  --link-selected-fg: #f0f9ff;
+  --hairline-color: #233047;
+  --border-color: #243147;
+  --error-fg: #fecaca;
+  --message-success-bg: #052e16;
+  --message-warning-bg: #422006;
+  --message-error-bg: #450a0a;
+  --darkened-bg: #101827;
+  --selected-bg: #13243a;
+  --selected-row: #0f1d31;
+  --close-button-bg: #1f2937;
+  --close-button-hover-bg: #334155;
+}
+
+html[data-rukkie-admin-theme="luxury-beauty"] {
+  --primary: #c6a96b;
+  --secondary: #ddc28f;
+  --accent: #c6a96b;
+  --primary-fg: #2f251f;
+  --body-fg: #3a2f28;
+  --body-bg: #f6f1ea;
+  --body-quiet-color: #7a6e63;
+  --body-medium-color: #7a6e63;
+  --body-loud-color: #2f251f;
+  --header-color: #3a2f28;
+  --header-branding-color: #3a2f28;
+  --header-bg: #f6f1ea;
+  --header-link-color: #6d5746;
+  --breadcrumbs-fg: #f8efe0;
+  --breadcrumbs-link-fg: #fff7ec;
+  --breadcrumbs-bg: #b79a63;
+  --link-fg: #8a6b2f;
+  --link-hover-color: #6f541f;
+  --link-selected-fg: #5b4318;
+  --hairline-color: #eadfce;
+  --border-color: #e2d4c1;
+  --selected-bg: #f2eadf;
+  --selected-row: #f7efe6;
+  --darkened-bg: #efe5d8;
+  --close-button-bg: #a98a52;
+  --close-button-hover-bg: #967842;
+  --message-success-bg: #eef6ef;
+  --message-warning-bg: #fff6e5;
+  --message-error-bg: #fff0ef;
+}
+
+html[data-rukkie-admin-theme="sand"] {
+  --primary: #8b5e34;
+  --secondary: #b08968;
+  --accent: #d6ad60;
+  --primary-fg: #fffdf8;
+  --body-fg: #3f3228;
+  --body-bg: #f7f0e7;
+  --body-quiet-color: #6b5b4b;
+  --body-medium-color: #6b5b4b;
+  --body-loud-color: #2f241c;
+  --header-color: #fffaf1;
+  --header-branding-color: #fffaf1;
+  --header-bg: #8b5e34;
+  --header-link-color: #fff3da;
+  --breadcrumbs-fg: #fef3c7;
+  --breadcrumbs-link-fg: #fff7e6;
+  --breadcrumbs-bg: #a47148;
+  --link-fg: #8b5e34;
+  --link-hover-color: #6f4518;
+  --link-selected-fg: #5b3716;
+  --hairline-color: #dfceb9;
+  --border-color: #d7c1a9;
+  --selected-bg: #efe1cf;
+  --selected-row: #f3e7d8;
+  --darkened-bg: #efdfca;
+}
+
+html[data-rukkie-admin-theme="forest"] {
+  --primary: #1f5c4a;
+  --secondary: #2d6a4f;
+  --accent: #74c69d;
+  --primary-fg: #f5fffa;
+  --body-fg: #16372c;
+  --body-bg: #f2fbf6;
+  --body-quiet-color: #3f6658;
+  --body-medium-color: #3f6658;
+  --body-loud-color: #0f2a22;
+  --header-color: #eafff2;
+  --header-branding-color: #eafff2;
+  --header-bg: #1f5c4a;
+  --header-link-color: #dcfce7;
+  --breadcrumbs-fg: #dcfce7;
+  --breadcrumbs-link-fg: #f0fdf4;
+  --breadcrumbs-bg: #2d6a4f;
+  --link-fg: #1f5c4a;
+  --link-hover-color: #134e3a;
+  --link-selected-fg: #0f3d2d;
+  --hairline-color: #d2e8db;
+  --border-color: #c4e0d0;
+  --selected-bg: #def4e7;
+  --selected-row: #eaf8ef;
+  --darkened-bg: #e5f5ec;
+}
+
+html[data-rukkie-admin-theme="ocean"] {
+  --primary: #0f4c81;
+  --secondary: #1d5f99;
+  --accent: #60a5fa;
+  --primary-fg: #eff6ff;
+  --body-fg: #112f4d;
+  --body-bg: #f3f8ff;
+  --body-quiet-color: #45637d;
+  --body-medium-color: #45637d;
+  --body-loud-color: #0f2740;
+  --header-color: #eff6ff;
+  --header-branding-color: #eff6ff;
+  --header-bg: #0f4c81;
+  --header-link-color: #dbeafe;
+  --breadcrumbs-fg: #dbeafe;
+  --breadcrumbs-link-fg: #eff6ff;
+  --breadcrumbs-bg: #1e5f99;
+  --link-fg: #0f4c81;
+  --link-hover-color: #0c3d66;
+  --link-selected-fg: #0a2f50;
+  --hairline-color: #cfe0f5;
+  --border-color: #bed4f0;
+  --selected-bg: #deebfb;
+  --selected-row: #ecf4ff;
+  --darkened-bg: #e7f1ff;
+}
+
+/* Small selector fallbacks for admin pages/components that don't fully use vars. */
+html[data-rukkie-admin-theme] .module h2,
+html[data-rukkie-admin-theme] .module caption,
+html[data-rukkie-admin-theme] .inline-group h2 {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+html[data-rukkie-admin-theme="luxury-beauty"] #site-name a {
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: 0.02em;
+}
+
+html[data-rukkie-admin-theme="luxury-beauty"] .module,
+html[data-rukkie-admin-theme="luxury-beauty"] #changelist-filter,
+html[data-rukkie-admin-theme="luxury-beauty"] .inline-group {
+  box-shadow: 0 8px 22px rgba(58, 47, 40, 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+html[data-rukkie-admin-theme] div.breadcrumbs {
+  background: var(--breadcrumbs-bg);
+  color: var(--breadcrumbs-fg);
+}
+
+html[data-rukkie-admin-theme="midnight"] #changelist-filter,
+html[data-rukkie-admin-theme="midnight"] .selector,
+html[data-rukkie-admin-theme="midnight"] .selector .selector-available h2,
+html[data-rukkie-admin-theme="midnight"] .selector .selector-chosen h2 {
+  background: #0f172a;
+  color: #e5e7eb;
+  border-color: #243147;
+}
+
+html[data-rukkie-admin-theme="midnight"] input,
+html[data-rukkie-admin-theme="midnight"] textarea,
+html[data-rukkie-admin-theme="midnight"] select {
+  background-color: #0f172a;
+  color: #e5e7eb;
+  border-color: #334155;
+}
+
+html[data-rukkie-admin-theme="midnight"] .button,
+html[data-rukkie-admin-theme="midnight"] input[type="submit"],
+html[data-rukkie-admin-theme="midnight"] input[type="button"],
+html[data-rukkie-admin-theme="midnight"] .submit-row input,
+html[data-rukkie-admin-theme="midnight"] a.button {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: #334155;
+}
