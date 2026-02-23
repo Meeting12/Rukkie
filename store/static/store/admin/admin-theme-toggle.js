@@ -1,7 +1,7 @@
 (function () {
   var STORAGE_KEY = "rukkie_admin_theme";
   var STOREFRONT_THEME_ENDPOINT = "/api/storefront/theme/";
-  var VALID_THEMES = ["default", "luxury-beauty", "midnight", "sand", "forest", "ocean"];
+  var VALID_THEMES = ["default", "luxury-beauty", "obsidian-gold", "midnight", "sand", "forest", "ocean"];
 
   function isValidTheme(theme) {
     return VALID_THEMES.indexOf(theme) !== -1;
@@ -47,7 +47,7 @@
   }
 
   function mapAdminThemeToStorefrontTheme(theme) {
-    return theme === "luxury-beauty" ? "luxury-beauty" : "default";
+    return (theme === "luxury-beauty" || theme === "obsidian-gold") ? theme : "default";
   }
 
   function updateApplyButtonState(button, label, disabled) {

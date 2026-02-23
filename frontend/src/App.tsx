@@ -32,14 +32,15 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 const STOREFRONT_THEME_STORAGE_KEY = "rukkie_storefront_theme";
+const STOREFRONT_THEMES = new Set(["luxury-beauty", "obsidian-gold"]);
 
 const applyStorefrontTheme = (theme?: string | null) => {
   const html = document.documentElement;
   const normalized = (theme || "").trim().toLowerCase();
-  if (normalized === "luxury-beauty") {
-    html.setAttribute("data-storefront-theme", "luxury-beauty");
+  if (STOREFRONT_THEMES.has(normalized)) {
+    html.setAttribute("data-storefront-theme", normalized);
     try {
-      localStorage.setItem(STOREFRONT_THEME_STORAGE_KEY, "luxury-beauty");
+      localStorage.setItem(STOREFRONT_THEME_STORAGE_KEY, normalized);
     } catch {
       // Ignore storage errors.
     }

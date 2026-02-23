@@ -48,7 +48,8 @@ STOREFRONT_THEME_PAGE_SLUG = 'storefront-theme-preset'
 STOREFRONT_THEME_PAGE_TITLE = 'Storefront Theme Preset'
 STOREFRONT_THEME_DEFAULT = 'default'
 STOREFRONT_THEME_LUXURY = 'luxury-beauty'
-STOREFRONT_THEME_CHOICES = {STOREFRONT_THEME_DEFAULT, STOREFRONT_THEME_LUXURY}
+STOREFRONT_THEME_OBSIDIAN = 'obsidian-gold'
+STOREFRONT_THEME_CHOICES = {STOREFRONT_THEME_DEFAULT, STOREFRONT_THEME_LUXURY, STOREFRONT_THEME_OBSIDIAN}
 PAID_ORDER_STATUSES = (
     Order.STATUS_PAID,
     Order.STATUS_PROCESSING,
@@ -2950,7 +2951,7 @@ def storefront_theme(request):
     if request.method == 'GET':
         return Response({
             'theme': _get_storefront_theme_value(),
-            'available_themes': [STOREFRONT_THEME_DEFAULT, STOREFRONT_THEME_LUXURY],
+            'available_themes': [STOREFRONT_THEME_DEFAULT, STOREFRONT_THEME_LUXURY, STOREFRONT_THEME_OBSIDIAN],
         })
 
     user = getattr(request, 'user', None)

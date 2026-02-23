@@ -130,6 +130,58 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     --shadow-product: 0 18px 36px -18px hsl(42 43% 55% / 0.30);
   }
 
+  html[data-storefront-theme="obsidian-gold"] {
+    --background: 222 26% 8%;
+    --foreground: 40 38% 93%;
+
+    --card: 224 20% 11%;
+    --card-foreground: 40 30% 92%;
+
+    --popover: 224 20% 11%;
+    --popover-foreground: 40 30% 92%;
+
+    --primary: 41 88% 62%;
+    --primary-foreground: 222 28% 10%;
+    --primary-hover: 41 88% 56%;
+
+    --secondary: 223 16% 16%;
+    --secondary-foreground: 39 22% 88%;
+
+    --muted: 223 16% 15%;
+    --muted-foreground: 38 12% 66%;
+
+    --accent: 229 18% 15%;
+    --accent-foreground: 40 55% 78%;
+
+    --destructive: 0 72% 53%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 223 14% 22%;
+    --input: 223 14% 22%;
+    --ring: 41 88% 62%;
+
+    --brand-gold: 41 88% 62%;
+    --brand-charcoal: 222 26% 8%;
+    --brand-cream: 40 20% 92%;
+    --brand-wine-light: 225 18% 17%;
+    --brand-wine-dark: 41 82% 45%;
+
+    --sidebar-background: 224 22% 10%;
+    --sidebar-foreground: 40 28% 88%;
+    --sidebar-primary: 41 88% 62%;
+    --sidebar-primary-foreground: 222 28% 10%;
+    --sidebar-accent: 226 20% 14%;
+    --sidebar-accent-foreground: 41 70% 74%;
+    --sidebar-border: 223 14% 20%;
+    --sidebar-ring: 41 88% 62%;
+
+    --shadow-sm: 0 1px 2px 0 hsl(222 45% 2% / 0.35);
+    --shadow-md: 0 10px 24px -14px hsl(222 40% 2% / 0.65);
+    --shadow-lg: 0 18px 36px -20px hsl(222 40% 2% / 0.72);
+    --shadow-xl: 0 24px 52px -22px hsl(222 45% 2% / 0.85);
+    --shadow-product: 0 18px 38px -20px hsl(41 88% 62% / 0.32);
+  }
+
   .dark {
     --background: 220 20% 8%;
     --foreground: 220 15% 95%;
@@ -184,6 +236,15 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     background-attachment: fixed;
   }
 
+  html[data-storefront-theme="obsidian-gold"] body {
+    background-image:
+      radial-gradient(circle at 14% 10%, hsl(41 88% 62% / 0.14), transparent 34%),
+      radial-gradient(circle at 86% 12%, hsl(220 35% 24% / 0.45), transparent 40%),
+      radial-gradient(circle at 60% 120%, hsl(41 78% 55% / 0.08), transparent 42%),
+      linear-gradient(180deg, hsl(222 26% 8%) 0%, hsl(225 24% 7%) 48%, hsl(228 26% 6%) 100%);
+    background-attachment: fixed;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-serif);
     @apply font-semibold tracking-tight;
@@ -193,6 +254,12 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
   html[data-storefront-theme="luxury-beauty"] h2,
   html[data-storefront-theme="luxury-beauty"] h3 {
     letter-spacing: 0.01em;
+  }
+
+  html[data-storefront-theme="obsidian-gold"] h1,
+  html[data-storefront-theme="obsidian-gold"] h2,
+  html[data-storefront-theme="obsidian-gold"] h3 {
+    letter-spacing: 0.012em;
   }
 }
 
@@ -207,6 +274,13 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
       linear-gradient(135deg, hsl(34 38% 95%) 0%, hsl(33 40% 92%) 48%, hsl(39 44% 88%) 100%);
   }
 
+  html[data-storefront-theme="obsidian-gold"] .hero-gradient {
+    background:
+      radial-gradient(circle at 78% 18%, hsl(41 88% 62% / 0.14), transparent 32%),
+      radial-gradient(circle at 18% 82%, hsl(216 38% 22% / 0.35), transparent 38%),
+      linear-gradient(135deg, hsl(223 26% 9%) 0%, hsl(226 22% 8%) 52%, hsl(232 24% 10%) 100%);
+  }
+
   /* Product card hover effect */
   .product-card {
     @apply relative overflow-hidden rounded-lg bg-card transition-all duration-300;
@@ -218,6 +292,14 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     box-shadow: var(--shadow-md);
     border: 1px solid hsl(var(--border) / 0.75);
     background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(34 30% 96%) 100%);
+  }
+
+  html[data-storefront-theme="obsidian-gold"] .product-card {
+    @apply rounded-xl;
+    box-shadow: var(--shadow-md);
+    border: 1px solid hsl(var(--border) / 0.95);
+    background:
+      linear-gradient(180deg, hsl(224 20% 12%) 0%, hsl(225 20% 10%) 100%);
   }
 
   .product-card:hover {
@@ -257,6 +339,12 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     background: hsl(34 38% 94%);
   }
 
+  html[data-storefront-theme="obsidian-gold"] .category-card {
+    box-shadow: var(--shadow-md);
+    border: 1px solid hsl(var(--border) / 0.9);
+    background: linear-gradient(180deg, hsl(224 18% 12%) 0%, hsl(227 20% 10%) 100%);
+  }
+
   .category-card::after {
     content: '';
     @apply absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/20 to-transparent transition-opacity duration-300;
@@ -276,6 +364,16 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     box-shadow: 0 14px 28px -16px hsl(var(--primary) / 0.8);
   }
 
+  html[data-storefront-theme="obsidian-gold"] .btn-hero {
+    @apply rounded-full;
+    background:
+      linear-gradient(135deg, hsl(41 92% 66%) 0%, hsl(39 88% 58%) 100%);
+    color: hsl(222 28% 10%);
+    box-shadow:
+      0 14px 28px -16px hsl(41 92% 62% / 0.7),
+      0 0 0 1px hsl(44 90% 72% / 0.18) inset;
+  }
+
   .btn-hero:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 20px -10px hsl(var(--primary) / 0.5);
@@ -291,6 +389,13 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     background: hsl(0 0% 100% / 0.45);
   }
 
+  html[data-storefront-theme="obsidian-gold"] .btn-outline-elegant {
+    @apply rounded-full;
+    border-color: hsl(var(--primary) / 0.35);
+    color: hsl(var(--foreground));
+    background: hsl(224 18% 12% / 0.72);
+  }
+
   /* Section styling */
   .section-padding {
     @apply py-16 md:py-24;
@@ -298,6 +403,10 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
 
   html[data-storefront-theme="luxury-beauty"] .section-padding {
     @apply py-20 md:py-28;
+  }
+
+  html[data-storefront-theme="obsidian-gold"] .section-padding {
+    @apply py-16 md:py-24;
   }
 
   /* Breadcrumb styling */
@@ -327,6 +436,12 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
 
   html[data-storefront-theme="luxury-beauty"] .newsletter-input {
     @apply bg-white/70 border-border text-foreground placeholder:text-muted-foreground;
+  }
+
+  html[data-storefront-theme="obsidian-gold"] .newsletter-input {
+    @apply bg-background/70 text-foreground placeholder:text-muted-foreground;
+    border-color: hsl(var(--border));
+    backdrop-filter: blur(6px);
   }
 
   /* Rating stars */
@@ -445,8 +560,18 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     box-shadow: 0 10px 25px -22px hsl(25 20% 20% / 0.45);
   }
 
+  html[data-storefront-theme="obsidian-gold"] header.sticky {
+    background: hsl(223 22% 9% / 0.94) !important;
+    border-bottom-color: hsl(var(--border) / 0.9) !important;
+    box-shadow: 0 14px 35px -24px hsl(222 40% 1% / 0.9);
+  }
+
   html[data-storefront-theme="luxury-beauty"] header.sticky > div:first-child {
     background: linear-gradient(90deg, hsl(42 43% 60%) 0%, hsl(38 38% 67%) 100%) !important;
+  }
+
+  html[data-storefront-theme="obsidian-gold"] header.sticky > div:first-child {
+    background: linear-gradient(90deg, hsl(41 92% 63%) 0%, hsl(33 88% 58%) 55%, hsl(41 85% 68%) 100%) !important;
   }
 
   html[data-storefront-theme="luxury-beauty"] footer {
@@ -455,9 +580,20 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     border-top: 1px solid hsl(var(--primary) / 0.35);
   }
 
+  html[data-storefront-theme="obsidian-gold"] footer {
+    background: linear-gradient(180deg, hsl(224 22% 9%) 0%, hsl(228 24% 7%) 100%) !important;
+    color: hsl(var(--foreground)) !important;
+    border-top: 1px solid hsl(var(--primary) / 0.28);
+  }
+
   html[data-storefront-theme="luxury-beauty"] footer .border-b,
   html[data-storefront-theme="luxury-beauty"] footer .border-t {
     border-color: hsl(var(--primary) / 0.15) !important;
+  }
+
+  html[data-storefront-theme="obsidian-gold"] footer .border-b,
+  html[data-storefront-theme="obsidian-gold"] footer .border-t {
+    border-color: hsl(var(--primary) / 0.12) !important;
   }
 
   html[data-storefront-theme="luxury-beauty"] footer .text-background\/70,
@@ -465,7 +601,16 @@ url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;
     color: hsl(var(--muted-foreground)) !important;
   }
 
+  html[data-storefront-theme="obsidian-gold"] footer .text-background\/70,
+  html[data-storefront-theme="obsidian-gold"] footer .text-background\/60 {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
   html[data-storefront-theme="luxury-beauty"] footer .text-background {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  html[data-storefront-theme="obsidian-gold"] footer .text-background {
     color: hsl(var(--foreground)) !important;
   }
 
