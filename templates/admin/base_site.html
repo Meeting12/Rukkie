@@ -20,17 +20,28 @@
 {% block userlinks %}
 {{ block.super }}
 <span class="rukkie-admin-theme-switcher">
-  <label for="rukkie-admin-theme-select" class="rukkie-admin-theme-label">Theme</label>
+  <label for="rukkie-admin-theme-select" class="rukkie-admin-theme-label">Admin</label>
   <select id="rukkie-admin-theme-select" class="rukkie-admin-theme-select" aria-label="Change admin theme">
     <option value="default">Default</option>
-    <option value="luxury-beauty">Luxury Beauty (Storefront)</option>
-    <option value="obsidian-gold">Obsidian Gold (Storefront)</option>
+    <option value="luxury-beauty">Luxury Beauty</option>
+    <option value="obsidian-gold">Obsidian Gold</option>
     <option value="midnight">Midnight</option>
     <option value="sand">Sand</option>
     <option value="forest">Forest</option>
     <option value="ocean">Ocean</option>
   </select>
   <button type="button" id="rukkie-admin-theme-apply" class="rukkie-admin-theme-apply" aria-label="Apply selected admin theme">
+    Apply
+  </button>
+</span>
+<span class="rukkie-admin-theme-switcher rukkie-storefront-theme-switcher">
+  <label for="rukkie-storefront-theme-select" class="rukkie-admin-theme-label">Storefront</label>
+  <select id="rukkie-storefront-theme-select" class="rukkie-admin-theme-select" aria-label="Change storefront theme">
+    <option value="default">Default</option>
+    <option value="luxury-beauty">Luxury Beauty</option>
+    <option value="obsidian-gold">Obsidian Gold</option>
+  </select>
+  <button type="button" id="rukkie-storefront-theme-apply" class="rukkie-admin-theme-apply" aria-label="Apply selected storefront theme">
     Apply
   </button>
 </span>

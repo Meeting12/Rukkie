@@ -1,0 +1,303 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}{% trans "Log in" %} | {{ site_title|default:_("Django site admin") }}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  body.login {
+    background: #f6f1ea;
+  }
+
+  body.login #container {
+    min-height: 100vh;
+    background: transparent;
+  }
+
+  body.login #content {
+    padding: 0;
+  }
+
+  body.login #content-main {
+    width: 100%;
+  }
+
+  body.login .login-wrapper {
+    min-height: calc(100vh - 56px);
+    display: flex;
+    background: #f6f1ea;
+  }
+
+  body.login .login-banner {
+    flex: 1.08;
+    position: relative;
+    background-image: url("{% static 'store/images/admin-banner.jpg' %}");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    overflow: hidden;
+  }
+
+  body.login .login-banner::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 16% 14%, rgba(198, 169, 107, 0.20), transparent 34%),
+      radial-gradient(circle at 84% 82%, rgba(198, 169, 107, 0.12), transparent 40%);
+    z-index: 1;
+  }
+
+  body.login .login-banner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to right,
+      rgba(246, 241, 234, 0.85),
+      rgba(0, 0, 0, 0.25)
+    );
+    z-index: 2;
+  }
+
+  body.login .login-banner-copy {
+    position: absolute;
+    left: 42px;
+    right: 42px;
+    bottom: 42px;
+    z-index: 3;
+    color: #2f251f;
+    max-width: 520px;
+  }
+
+  body.login .login-banner-copy h2 {
+    margin: 0 0 8px;
+    font-size: clamp(2rem, 2.7vw, 3rem);
+    line-height: 1.05;
+    font-family: Georgia, "Times New Roman", serif;
+    letter-spacing: 0.01em;
+    color: #3a2f28;
+  }
+
+  body.login .login-banner-copy p {
+    margin: 0;
+    color: rgba(58, 47, 40, 0.84);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  body.login .login-form-container {
+    flex: 0.92;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+    background-color: #f6f1ea;
+  }
+
+  body.login .login-panel {
+    width: 100%;
+    max-width: 460px;
+    background: rgba(255, 255, 255, 0.78);
+    border: 1px solid rgba(198, 169, 107, 0.18);
+    border-radius: 20px;
+    box-shadow: 0 20px 45px -28px rgba(58, 47, 40, 0.28);
+    backdrop-filter: blur(4px);
+    padding: 28px 28px 22px;
+  }
+
+  body.login .login-panel h1 {
+    margin: 0 0 4px;
+    color: #3a2f28;
+    font-size: 1.7rem;
+    letter-spacing: 0.01em;
+  }
+
+  body.login .login-panel .login-subtitle {
+    margin: 0 0 20px;
+    color: #7a6e63;
+    font-size: 14px;
+  }
+
+  body.login .form-row {
+    margin-bottom: 14px;
+  }
+
+  body.login .form-row label {
+    display: block;
+    margin-bottom: 6px;
+    color: #3a2f28;
+    font-weight: 600;
+  }
+
+  body.login .form-row input[type="text"],
+  body.login .form-row input[type="password"],
+  body.login .form-row input[type="email"] {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 42px;
+    border-radius: 12px;
+    border: 1px solid #dccdb8;
+    background: #fffdfa;
+    color: #2f251f;
+    padding: 10px 12px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+  }
+
+  body.login .form-row input:focus {
+    border-color: #c6a96b;
+    outline: 2px solid rgba(198, 169, 107, 0.25);
+    outline-offset: 1px;
+  }
+
+  body.login .submit-row {
+    padding: 0;
+    margin: 16px 0 0;
+    background: transparent;
+    border: 0;
+    text-align: left;
+  }
+
+  body.login .submit-row input {
+    width: 100%;
+    min-height: 44px;
+    border-radius: 999px;
+    border: 1px solid #b8954e;
+    background: #c6a96b;
+    color: #2f251f;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    box-shadow: 0 12px 22px -14px rgba(198, 169, 107, 0.8);
+    transition: background-color .2s ease, transform .2s ease, box-shadow .2s ease;
+  }
+
+  body.login .submit-row input:hover {
+    background: #b8954e;
+    box-shadow: 0 16px 28px -18px rgba(184, 149, 78, 0.85);
+    transform: translateY(-1px);
+  }
+
+  body.login .submit-row input:focus {
+    outline: 2px solid rgba(198, 169, 107, 0.35);
+    outline-offset: 2px;
+  }
+
+  body.login .errornote,
+  body.login ul.errorlist {
+    border-radius: 12px;
+  }
+
+  body.login .password-reset-link {
+    margin-top: 12px;
+    font-size: 13px;
+    color: #7a6e63;
+  }
+
+  body.login .password-reset-link a {
+    color: #8a6b2f;
+  }
+
+  @media (max-width: 1200px) {
+    body.login .login-form-container {
+      padding: 36px;
+    }
+    body.login .login-banner-copy {
+      left: 28px;
+      right: 28px;
+      bottom: 28px;
+    }
+  }
+
+  @media (max-width: 992px) {
+    body.login .login-wrapper {
+      min-height: auto;
+      display: block;
+    }
+    body.login .login-banner {
+      display: none;
+    }
+    body.login .login-form-container {
+      width: 100%;
+      min-height: calc(100vh - 56px);
+      padding: 20px 16px 28px;
+      align-items: flex-start;
+    }
+    body.login .login-panel {
+      margin-top: 8px;
+      border-radius: 16px;
+      padding: 22px 18px 18px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} login{% endblock %}
+{% block nav-global %}{% endblock %}
+{% block breadcrumbs %}{% endblock %}
+{% block content_title %}{% endblock %}
+
+{% block content %}
+<div class="login-wrapper">
+  <div class="login-banner" aria-hidden="true">
+    <div class="login-banner-copy">
+      <h2>Welcome Back</h2>
+      <p>Secure access to De-Rukkies Collections admin. Manage products, orders, payments, and storefront settings from one place.</p>
+    </div>
+  </div>
+
+  <div class="login-form-container">
+    <div class="login-panel">
+      <h1>{% trans "Admin Login" %}</h1>
+      <p class="login-subtitle">{% trans "Sign in to continue to the dashboard." %}</p>
+
+      {% if form.errors and not form.non_field_errors %}
+      <p class="errornote">
+        {% blocktranslate count counter=form.errors.items|length %}Please correct the error below.{% plural %}Please correct the errors below.{% endblocktranslate %}
+      </p>
+      {% endif %}
+
+      {% if form.non_field_errors %}
+        {% for error in form.non_field_errors %}
+          <p class="errornote">{{ error }}</p>
+        {% endfor %}
+      {% endif %}
+
+      {% if user.is_authenticated %}
+      <p class="errornote">
+        {% blocktranslate trimmed %}
+          You are authenticated as {{ username }}, but are not authorized to access this page.
+          Would you like to login to a different account?
+        {% endblocktranslate %}
+      </p>
+      {% endif %}
+
+      <div id="content-main">
+        <form action="{{ app_path }}" method="post" id="login-form">
+          {% csrf_token %}
+          <div class="form-row">
+            {{ form.username.errors }}
+            {{ form.username.label_tag }}
+            {{ form.username }}
+          </div>
+          <div class="form-row">
+            {{ form.password.errors }}
+            {{ form.password.label_tag }}
+            {{ form.password }}
+            <input type="hidden" name="next" value="{{ next }}">
+          </div>
+          {% url 'admin_password_reset' as password_reset_url %}
+          {% if password_reset_url %}
+          <div class="password-reset-link">
+            <a href="{{ password_reset_url }}">{% trans 'Forgotten your password or username?' %}</a>
+          </div>
+          {% endif %}
+          <div class="submit-row">
+            <input type="submit" value="{% trans 'Log in' %}">
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

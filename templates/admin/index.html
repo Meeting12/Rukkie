@@ -1,0 +1,31 @@
+{% extends "admin/index.html" %}
+{% load i18n %}
+
+{% block content %}
+{{ block.super }}
+
+<div class="app-store module">
+  <table>
+    <caption>
+      <a href="{% url 'admin:store_paymenttransaction_flutterwave_balance' %}" class="section" title="Open Flutterwave Balance">
+        Payments Tools
+      </a>
+    </caption>
+    <tbody>
+      <tr class="model-paymenttransaction">
+        <th scope="row">
+          <a href="{% url 'admin:store_paymenttransaction_flutterwave_balance' %}">
+            Flutterwave Balance
+          </a>
+        </th>
+        <td>
+          Read-only balance view with currency filter, sorting, and manual refresh.
+        </td>
+        <td>
+          <a class="viewlink" href="{% url 'admin:store_paymenttransaction_flutterwave_balance' %}">{% trans "View" %}</a>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

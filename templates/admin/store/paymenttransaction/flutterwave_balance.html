@@ -1,0 +1,93 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url 'admin:store_paymenttransaction_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <div class="module aligned">
+    <h2>Flutterwave Balance Overview</h2>
+    <div class="form-row">
+      <div>
+        <p><strong>Mode:</strong> {{ flw_mode }}</p>
+        <p><strong>API Base URL:</strong> {{ flw_base_url }}</p>
+        <p><strong>Secret Configured:</strong> {% if secret_configured %}Yes{% else %}No{% endif %}</p>
+        <p><strong>Cache:</strong> {% if cache_seconds %}{{ cache_seconds }}s{% else %}Disabled{% endif %}</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="module" style="margin-bottom: 1rem;">
+    <form method="get" style="padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: end;">
+      <div>
+        <label for="id_currency"><strong>Currency</strong></label><br>
+        <select id="id_currency" name="currency">
+          <option value="">All</option>
+          {% for code in available_currencies %}
+            <option value="{{ code }}" {% if selected_currency == code %}selected{% endif %}>{{ code }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="id_sort"><strong>Sort</strong></label><br>
+        <select id="id_sort" name="sort">
+          <option value="currency" {% if sort_key == 'currency' %}selected{% endif %}>Currency</option>
+          <option value="available_desc" {% if sort_key == 'available_desc' %}selected{% endif %}>Available (High to Low)</option>
+          <option value="available_asc" {% if sort_key == 'available_asc' %}selected{% endif %}>Available (Low to High)</option>
+          <option value="ledger_desc" {% if sort_key == 'ledger_desc' %}selected{% endif %}>Ledger (High to Low)</option>
+          <option value="ledger_asc" {% if sort_key == 'ledger_asc' %}selected{% endif %}>Ledger (Low to High)</option>
+        </select>
+      </div>
+      <div>
+        <button type="submit" class="button default">Apply Filter</button>
+      </div>
+      <div>
+        <a href="{% url 'admin:store_paymenttransaction_flutterwave_balance' %}?refresh=1{% if selected_currency %}&currency={{ selected_currency }}{% endif %}{% if sort_key %}&sort={{ sort_key }}{% endif %}" class="button">
+          Force Refresh API
+        </a>
+      </div>
+      <div>
+        <a href="{% url 'admin:store_paymenttransaction_changelist' %}" class="button">Back to Payments</a>
+      </div>
+    </form>
+  </div>
+
+  {% if error_message %}
+    <div class="messagelist">
+      <div class="error">{{ error_message }}</div>
+    </div>
+  {% endif %}
+
+  <div class="module">
+    <table>
+      <thead>
+        <tr>
+          <th>Currency</th>
+          <th>Available Balance</th>
+          <th>Ledger Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in balance_rows %}
+          <tr>
+            <td>{{ row.currency }}</td>
+            <td>{{ row.available_balance }}</td>
+            <td>{{ row.ledger_balance }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="3">No balance data returned.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

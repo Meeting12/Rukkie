@@ -14,6 +14,7 @@ from datetime import datetime
 from django.core.mail import send_mail
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.core.cache import cache
 from django.conf import settings
 from django import forms
 from django.urls import path, reverse
@@ -1135,6 +1136,78 @@ class PaymentTransactionAdmin(admin.ModelAdmin):
 	)
 	list_filter = ('provider', 'status', 'success', 'currency')
 	search_fields = ('provider_transaction_id', 'paypal_order_id', 'payer_email', 'order__order_number', 'order__id', 'user__username')
+	change_list_template = 'admin/store/paymenttransaction/change_list.html'
+
+	def get_urls(self):
+		urls = super().get_urls()
+		custom_urls = [
+			path(
+				'flutterwave-balance/',
+				self.admin_site.admin_view(self.flutterwave_balance_view),
+				name='store_paymenttransaction_flutterwave_balance',
+			),
+		]
+		return custom_urls + urls
+
+	def flutterwave_balance_view(self, request):
+		if not self.has_view_permission(request):
+			return redirect('admin:login')
+
+		selected_currency = str(request.GET.get('currency') or '').strip().upper()
+		sort_key = str(request.GET.get('sort') or 'currency').strip().lower()
+		force_refresh = str(request.GET.get('refresh') or '').strip() in {'1', 'true', 'yes'}
+
+		context = {
+			**self.admin_site.each_context(request),
+			'title': 'Flutterwave Balance',
+			'opts': self.model._meta,
+			'has_view_permission': self.has_view_permission(request),
+			'secret_configured': _flutterwave_secret_present(),
+			'balance_rows': [],
+			'error_message': '',
+			'available_currencies': [],
+			'selected_currency': selected_currency,
+			'sort_key': sort_key,
+			'flw_mode': (getattr(settings, 'FLUTTERWAVE_MODE', 'LIVE') or 'LIVE').strip().upper(),
+			'flw_base_url': (getattr(settings, 'FLUTTERWAVE_BASE_URL', 'https://api.flutterwave.com/v3') or 'https://api.flutterwave.com/v3').rstrip('/'),
+			'cache_seconds': int(getattr(settings, 'FLUTTERWAVE_BALANCE_CACHE_SECONDS', 60) or 60),
+		}
+		try:
+			data = _fetch_flutterwave_balances(force_refresh=force_refresh)
+			rows = data.get('rows') or []
+			currencies = sorted({str((row or {}).get('currency') or '').upper() for row in rows if (row or {}).get('currency')})
+			context['available_currencies'] = currencies
+			if selected_currency:
+				rows = [r for r in rows if str(r.get('currency') or '').upper() == selected_currency]
+
+			def _num(value):
+				try:
+					return float(value)
+				except Exception:
+					return float('-inf')
+
+			if sort_key == 'available_desc':
+				rows = sorted(rows, key=lambda r: _num(r.get('available_balance')), reverse=True)
+			elif sort_key == 'available_asc':
+				rows = sorted(rows, key=lambda r: _num(r.get('available_balance')))
+			elif sort_key == 'ledger_desc':
+				rows = sorted(rows, key=lambda r: _num(r.get('ledger_balance')), reverse=True)
+			elif sort_key == 'ledger_asc':
+				rows = sorted(rows, key=lambda r: _num(r.get('ledger_balance')))
+			else:
+				sort_key = 'currency'
+				rows = sorted(rows, key=lambda r: str(r.get('currency') or ''))
+
+			context['sort_key'] = sort_key
+			context['balance_rows'] = rows
+			context['flw_mode'] = data.get('mode') or context['flw_mode']
+			context['flw_base_url'] = data.get('base_url') or context['flw_base_url']
+		except Exception as exc:
+			logger.exception('admin.flutterwave_balance fetch_failed')
+			context['error_message'] = str(exc)
+			messages.error(request, f'Could not load Flutterwave balance: {exc}')
+
+		return TemplateResponse(request, 'admin/store/paymenttransaction/flutterwave_balance.html', context)
 
 
 @admin.register(Wishlist)
@@ -1185,3 +1258,68 @@ class UserMailboxMessageAdmin(admin.ModelAdmin):
 	list_filter = ('category', 'is_read', 'created_at')
 	search_fields = ('user__username', 'subject', 'body')
 	readonly_fields = ('created_at', 'updated_at', 'read_at')
+def _flutterwave_secret_present():
+	return bool(str(getattr(settings, 'FLUTTERWAVE_SECRET_KEY', '') or '').strip())
+
+
+def _flutterwave_balance_cache_key():
+	mode = (getattr(settings, 'FLUTTERWAVE_MODE', 'LIVE') or 'LIVE').strip().upper()
+	base = (getattr(settings, 'FLUTTERWAVE_BASE_URL', 'https://api.flutterwave.com/v3') or 'https://api.flutterwave.com/v3').rstrip('/')
+	return f'admin:flutterwave:balances:{mode}:{base}'
+
+
+def _fetch_flutterwave_balances(*, force_refresh=False):
+	"""Fetch Flutterwave balances for admin display (read-only)."""
+	cache_key = _flutterwave_balance_cache_key()
+	cache_ttl = int(getattr(settings, 'FLUTTERWAVE_BALANCE_CACHE_SECONDS', 60) or 60)
+	if not force_refresh and cache_ttl > 0:
+		cached = cache.get(cache_key)
+		if cached:
+			return cached
+
+	flw_secret = (getattr(settings, 'FLUTTERWAVE_SECRET_KEY', '') or '').strip()
+	flw_mode = (getattr(settings, 'FLUTTERWAVE_MODE', 'LIVE') or 'LIVE').strip().upper()
+	flw_base_url = (getattr(settings, 'FLUTTERWAVE_BASE_URL', 'https://api.flutterwave.com/v3') or 'https://api.flutterwave.com/v3').rstrip('/')
+
+	if not flw_secret:
+		raise ValueError('Missing FLUTTERWAVE_SECRET_KEY')
+
+	headers = {
+		'Authorization': f'Bearer {flw_secret}',
+		'Accept': 'application/json',
+	}
+	resp = requests.get(f'{flw_base_url}/balances', headers=headers, timeout=20)
+	if resp.status_code not in (200, 201):
+		raise ValueError(f'Flutterwave balance request failed ({resp.status_code}): {resp.text[:300]}')
+	try:
+		payload = resp.json()
+	except ValueError as exc:
+		raise ValueError('Invalid JSON response from Flutterwave balances endpoint') from exc
+
+	rows = payload.get('data') or []
+	if not isinstance(rows, list):
+		rows = []
+
+	normalized = []
+	for row in rows:
+		if not isinstance(row, dict):
+			continue
+		currency = str(row.get('currency') or row.get('currency_code') or '').strip().upper()
+		available = row.get('available_balance')
+		ledger = row.get('ledger_balance')
+		normalized.append({
+			'currency': currency or 'N/A',
+			'available_balance': available if available is not None else '',
+			'ledger_balance': ledger if ledger is not None else '',
+			'raw': row,
+		})
+
+	result = {
+		'mode': flw_mode,
+		'base_url': flw_base_url,
+		'rows': normalized,
+		'payload': payload,
+	}
+	if cache_ttl > 0:
+		cache.set(cache_key, result, cache_ttl)
+	return result

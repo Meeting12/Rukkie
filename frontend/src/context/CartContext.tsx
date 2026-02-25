@@ -5,6 +5,7 @@ import { fetchJSON } from "@/lib/api";
 
 interface CartContextType {
   items: CartItem[];
+  refreshCart: () => Promise<any>;
   addToCart: (product: Product, quantity?: number) => Promise<void>;
   removeFromCart: (productId: string) => Promise<void>;
   updateQuantity: (productId: string, quantity: number) => Promise<void>;
@@ -165,6 +166,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <CartContext.Provider
       value={{
         items,
+        refreshCart,
         addToCart,
         removeFromCart,
         updateQuantity,

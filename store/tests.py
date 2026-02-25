@@ -21,6 +21,7 @@ from django.conf import settings
 from unittest.mock import Mock, patch
 from django.contrib.auth.models import User
 import io
+import json
 import os
 import tempfile
 import shutil
@@ -512,6 +513,68 @@ class FlutterwavePaymentConfigTests(TestCase):
 		)
 		self.assertEqual(resp.status_code, 200)
 		self.assertTrue(resp.json().get('paid'))
+		self.order.refresh_from_db()
+		self.assertEqual(self.order.status, Order.STATUS_PAID)
+
+	@patch('store.views.requests.get')
+	def test_flutterwave_confirm_recovers_pending_order_when_success_txn_already_exists(self, mock_get):
+		settings.FLUTTERWAVE_SECRET_KEY = 'FLWSECK_TEST-validkey'
+		settings.FLUTTERWAVE_MODE = 'TEST'
+		PaymentTransaction.objects.create(
+			order=self.order,
+			user=self.user,
+			provider='flutterwave',
+			provider_transaction_id='998877',
+			amount='10.00',
+			success=True,
+			status='completed',
+			raw_response={'seed': True},
+		)
+
+		mock_resp = Mock()
+		mock_resp.status_code = 200
+		mock_resp.json.return_value = {
+			'status': 'success',
+			'data': {
+				'id': 998877,
+				'status': 'successful',
+				'amount': '10.00',
+				'tx_ref': f'order-{self.order.id}-abcd1234',
+				'meta': {'order_id': str(self.order.id)},
+			},
+		}
+		mock_get.return_value = mock_resp
+
+		resp = self.client.post(
+			'/api/payments/flutterwave/confirm/',
+			{'order_id': self.order.id, 'transaction_id': '998877', 'status': 'successful'},
+			content_type='application/json',
+		)
+		self.assertEqual(resp.status_code, 200)
+		self.assertTrue(resp.json().get('paid'))
+		self.order.refresh_from_db()
+		self.assertEqual(self.order.status, Order.STATUS_PAID)
+
+	def test_flutterwave_webhook_accepts_mixed_case_status_and_marks_paid(self):
+		settings.FLUTTERWAVE_WEBHOOK_SECRET = 'flw-webhook-secret'
+		settings.FLUTTERWAVE_MODE = 'LIVE'
+		payload = {
+			'event': 'charge.completed',
+			'data': {
+				'id': 'flw_123',
+				'status': 'Successful',
+				'amount': '10.00',
+				'tx_ref': f'order-{self.order.id}-abcd1234',
+				'meta': {'order_id': str(self.order.id)},
+			},
+		}
+		resp = self.client.post(
+			'/api/payments/webhook/flutterwave/',
+			data=json.dumps(payload),
+			content_type='application/json',
+			HTTP_VERIF_HASH='flw-webhook-secret',
+		)
+		self.assertEqual(resp.status_code, 200)
 		self.order.refresh_from_db()
 		self.assertEqual(self.order.status, Order.STATUS_PAID)
 

@@ -7,6 +7,10 @@
   border-left: 1px solid rgba(255, 255, 255, 0.25);
 }
 
+.rukkie-storefront-theme-switcher {
+  margin-left: 8px;
+}
+
 .rukkie-admin-theme-label {
   font-size: 11px;
   opacity: 0.9;
@@ -65,6 +69,10 @@
     margin: 8px 0 0;
     padding-left: 0;
     border-left: 0;
+  }
+
+  .rukkie-storefront-theme-switcher {
+    margin-left: 0;
   }
 
   #user-tools {

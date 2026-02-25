@@ -2490,6 +2490,10 @@ def payment_verify_mark_paid(request):
         if existing:
             if existing.success:
                 logger.info('payment.verify duplicate order_id=%s provider=%s txn_id=%s', order.id, provider, provider_txn_id)
+                became_paid = _mark_order_paid_and_finalize(order, provider=provider or 'manual', provider_txn_id=provider_txn_id or '')
+                if became_paid:
+                    logger.info('payment.verify recovered_finalize order_id=%s provider=%s txn_id=%s', order.id, provider, provider_txn_id or '')
+                    _send_order_paid_notifications(order, provider=provider or 'manual')
                 return Response({'ok': True, 'transaction_id': existing.id, 'note': 'already_recorded'})
             existing.success = True
             parsed_amount_existing = _parse_decimal_amount(amount)
@@ -2544,7 +2548,7 @@ def _record_transaction(
         existing = PaymentTransaction.objects.filter(provider_transaction_id=provider_txn_id, provider=provider).first()
         if existing:
             if existing.success:
-                return existing, False
+                return existing, getattr(order, 'status', None) not in PAID_ORDER_STATUSES
             updated_fields = []
             existing.success = True
             updated_fields.append('success')
@@ -2747,7 +2751,7 @@ def flutterwave_webhook(request):
     # Flutterwave payload shape may include data.tx_ref and data.status
     fw = data.get('data') or {}
     tx_ref = fw.get('tx_ref')
-    status_str = fw.get('status')
+    status_str = str(fw.get('status') or '').strip().lower()
     provider_txn_id = fw.get('id')
     amount = None
     try:
@@ -2756,9 +2760,11 @@ def flutterwave_webhook(request):
         amount = None
 
     tx_match = re.match(r'^order-(\d+)', str(tx_ref or ''))
-    if tx_match and status_str in ('successful', 'completed'):
+    meta_order_id = str((fw.get('meta') or {}).get('order_id') or '').strip()
+    resolved_order_id = tx_match.group(1) if tx_match else meta_order_id
+    if resolved_order_id and status_str in ('successful', 'completed'):
         try:
-            order_id = int(tx_match.group(1))
+            order_id = int(resolved_order_id)
             order = Order.objects.get(id=order_id)
             effective_txn_id = provider_txn_id or tx_ref
             if amount is not None and not _amount_matches_order_total(order, amount):

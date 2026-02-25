@@ -15,7 +15,7 @@ const PAID_STATUSES = ["paid", "processing", "shipped", "delivered"];
 const Index = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { clearCart } = useCart();
+  const { refreshCart } = useCart();
 
   useEffect(() => {
     const payment = (searchParams.get("payment") || "").toLowerCase();
@@ -66,6 +66,7 @@ const Index = () => {
     };
 
     const checkAndClear = async () => {
+      let confirmAttemptError = false;
       try {
         if (provider === "stripe" && stripeSessionId) {
           await fetchJSON("/api/payments/stripe/confirm/", {
@@ -92,12 +93,19 @@ const Index = () => {
             }),
           });
         }
+      } catch {
+        // Provider confirm can fail when webhook already marked payment paid.
+        confirmAttemptError = true;
+      }
 
+      try {
         const isPaid = await waitUntilPaid();
 
         if (isPaid) {
-          await clearCart();
+          await refreshCart();
           toast.success("Payment confirmed and cart updated.");
+        } else if (confirmAttemptError) {
+          toast.info("Payment is being confirmed. Cart will be kept until payment is successful.");
         } else {
           toast.info("Payment is being processed. Cart is kept until confirmation is complete.");
         }
@@ -112,7 +120,7 @@ const Index = () => {
   }, [
     searchParams,
     navigate,
-    clearCart,
+    refreshCart,
   ]);
 
   return (

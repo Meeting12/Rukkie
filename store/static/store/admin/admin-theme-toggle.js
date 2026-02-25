@@ -46,16 +46,27 @@
     return match ? decodeURIComponent(match[2]) : "";
   }
 
-  function mapAdminThemeToStorefrontTheme(theme) {
-    return (theme === "luxury-beauty" || theme === "obsidian-gold") ? theme : "default";
-  }
-
   function updateApplyButtonState(button, label, disabled) {
     if (!button) return;
     button.disabled = !!disabled;
     if (label) {
       button.textContent = label;
     }
+  }
+
+  function fetchStorefrontTheme() {
+    return fetch(STOREFRONT_THEME_ENDPOINT, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: {
+        "Accept": "application/json"
+      }
+    }).then(function (response) {
+      if (!response.ok) {
+        throw new Error("Failed to load storefront theme.");
+      }
+      return response.json().catch(function () { return {}; });
+    });
   }
 
   function syncStorefrontTheme(theme) {
@@ -68,7 +79,7 @@
         "Accept": "application/json",
         "X-CSRFToken": csrfToken
       },
-      body: JSON.stringify({ theme: mapAdminThemeToStorefrontTheme(theme) })
+      body: JSON.stringify({ theme: theme || "default" })
     }).then(function (response) {
       if (!response.ok) {
         return response
@@ -106,6 +117,52 @@
       setStoredTheme(nextTheme);
       applyTheme(nextTheme);
       if (applyButton) {
+        updateApplyButtonState(applyButton, "Applied", false);
+        window.setTimeout(function () {
+          updateApplyButtonState(applyButton, "Apply", false);
+        }, 800);
+      }
+    }
+
+    if (applyButton) {
+      applyButton.addEventListener("click", commitSelectedTheme);
+    }
+
+    select.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commitSelectedTheme();
+      }
+    });
+  }
+
+  function initStorefrontThemeSelect() {
+    var select = document.getElementById("rukkie-storefront-theme-select");
+    var applyButton = document.getElementById("rukkie-storefront-theme-apply");
+    if (!select) {
+      return;
+    }
+
+    function validStorefrontTheme(theme) {
+      return theme === "default" || theme === "luxury-beauty" || theme === "obsidian-gold";
+    }
+
+    fetchStorefrontTheme()
+      .then(function (payload) {
+        var current = String((payload && payload.theme) || "default").toLowerCase();
+        select.value = validStorefrontTheme(current) ? current : "default";
+      })
+      .catch(function () {
+        select.value = "default";
+      });
+
+    function commitStorefrontTheme() {
+      var nextTheme = select ? String(select.value || "default").toLowerCase() : "default";
+      if (!validStorefrontTheme(nextTheme)) {
+        nextTheme = "default";
+      }
+      if (applyButton) {
+        applyButton.title = "";
         updateApplyButtonState(applyButton, "Applying...", true);
       }
       syncStorefrontTheme(nextTheme)
@@ -126,13 +183,12 @@
     }
 
     if (applyButton) {
-      applyButton.addEventListener("click", commitSelectedTheme);
+      applyButton.addEventListener("click", commitStorefrontTheme);
     }
-
     select.addEventListener("keydown", function (event) {
       if (event.key === "Enter") {
         event.preventDefault();
-        commitSelectedTheme();
+        commitStorefrontTheme();
       }
     });
   }
@@ -140,6 +196,7 @@
   function boot() {
     applyTheme(getStoredTheme());
     initThemeSelect();
+    initStorefrontThemeSelect();
   }
 
   if (document.readyState === "loading") {
