@@ -42,6 +42,7 @@ import re
 from uuid import uuid4
 from django.views.decorators.csrf import csrf_exempt
 from ipaddress import ip_address
+from .email_react import get_public_site_url, render_react_email_html
 
 logger = logging.getLogger(__name__)
 STOREFRONT_THEME_PAGE_SLUG = 'storefront-theme-preset'
@@ -125,7 +126,7 @@ def _set_storefront_theme_value(theme_value: str) -> str:
     return normalized
 
 
-def _safe_send_email(*, subject, message, recipient_list, event_name):
+def _safe_send_email(*, subject, message, recipient_list, event_name, html_message=None):
     recipients = [r for r in (recipient_list or []) if r]
     if not recipients:
         logger.warning('%s email skipped: no recipients', event_name)
@@ -136,6 +137,7 @@ def _safe_send_email(*, subject, message, recipient_list, event_name):
             message=message,
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@derukkies.com'),
             recipient_list=recipients,
+            html_message=html_message,
             fail_silently=False,
         )
         logger.info('%s email sent to=%s sent_count=%s', event_name, ','.join(recipients), sent_count)
@@ -197,6 +199,16 @@ def _send_verification_email(request, user):
         message=message,
         recipient_list=[user.email],
         event_name='register.verify_email',
+        html_message=render_react_email_html(
+            'SignupVerificationEmail',
+            {
+                'userName': user.get_full_name() or user.username,
+                'verificationUrl': verify_url,
+                'siteName': 'De-Rukkies Collections',
+                'supportEmail': _contact_recipient(),
+                'expiresText': 'This verification link expires automatically. If it fails, request a new link from the login page.',
+            },
+        ),
     )
     _create_user_mailbox_message(
         user,
@@ -230,11 +242,26 @@ def _send_login_security_notification(user, request):
         'If this was NOT you, change your password immediately and review account activity.'
     )
     if user.email:
+        site_root = get_public_site_url(request)
         _safe_send_email(
             subject=subject,
             message=message,
             recipient_list=[user.email],
             event_name='auth.login_alert',
+            html_message=render_react_email_html(
+                'LoginWarningEmail',
+                {
+                    'userName': user.get_full_name() or user.username,
+                    'loginTime': logged_in_at,
+                    'device': device_name,
+                    'ipAddress': ip,
+                    'location': location,
+                    'accountUrl': f'{site_root}/account',
+                    'resetPasswordUrl': f'{site_root}/forgot-password',
+                    'siteName': 'De-Rukkies Collections',
+                    'supportEmail': _contact_recipient(),
+                },
+            ),
         )
     else:
         logger.warning('auth.login_alert email skipped user=%s reason=no_email', user.username)
@@ -264,6 +291,38 @@ def _send_order_created_notifications(order, contact_email=None):
         recipient_email = contact_email
 
     if recipient_email:
+        site_root = get_public_site_url()
+        shipping_text = ''
+        tax_text = ''
+        subtotal_text = ''
+        try:
+            items_qs = order.items.select_related('product').all()
+            subtotal = sum((Decimal(str(item.price or 0)) * Decimal(str(item.quantity or 0))) for item in items_qs)
+            subtotal_text = f'${subtotal.quantize(Decimal("0.01"))}'
+        except Exception:
+            subtotal_text = ''
+        try:
+            if getattr(order, 'shipping_method', None):
+                shipping_text = f'${Decimal(str(order.shipping_method.price or 0)).quantize(Decimal("0.01"))}'
+        except Exception:
+            shipping_text = ''
+        try:
+            if subtotal_text:
+                subtotal_value = Decimal(subtotal_text.replace('$', ''))
+                total_value = Decimal(str(order.total or 0)).quantize(Decimal('0.01'))
+                shipping_value = Decimal(shipping_text.replace('$', '')) if shipping_text else Decimal('0.00')
+                tax_value = (total_value - subtotal_value - shipping_value).quantize(Decimal('0.01'))
+                tax_text = f'${tax_value}'
+        except Exception:
+            tax_text = ''
+        address_text = ''
+        try:
+            addr = order.shipping_address or order.billing_address
+            if addr:
+                parts = [addr.full_name, addr.line1, getattr(addr, 'line2', ''), addr.city, addr.postal_code, addr.country]
+                address_text = '\n'.join([str(p).strip() for p in parts if p])
+        except Exception:
+            address_text = ''
         customer_message = (
             f'Thank you for your order.\n\n'
             f'Order Number: {order.order_number}\n'
@@ -276,6 +335,22 @@ def _send_order_created_notifications(order, contact_email=None):
             message=customer_message,
             recipient_list=[recipient_email],
             event_name='order.created.customer',
+            html_message=render_react_email_html(
+                'OrderConfirmationEmail',
+                {
+                    'userName': (order.user.get_full_name() or order.user.username) if order.user else '',
+                    'orderNumber': order.order_number,
+                    'statusText': order.status,
+                    'totalText': f'${order.total}',
+                    'subtotalText': subtotal_text,
+                    'shippingText': shipping_text,
+                    'taxText': tax_text,
+                    'addressText': address_text,
+                    'orderUrl': f'{site_root}/account',
+                    'siteName': 'De-Rukkies Collections',
+                    'supportEmail': _contact_recipient(),
+                },
+            ),
         )
         if order.user_id:
             _create_user_mailbox_message(
@@ -310,6 +385,18 @@ def _send_order_created_notifications(order, contact_email=None):
 def _send_order_paid_notifications(order, provider='unknown'):
     recipient_email = order.user.email if order.user and order.user.email else ''
     if recipient_email:
+        latest_txn = order.transactions.order_by('-created_at', '-id').first()
+        site_root = get_public_site_url()
+        payment_date = ''
+        payment_method = provider
+        transaction_id = ''
+        if latest_txn:
+            transaction_id = (latest_txn.provider_txn_id or '').strip()
+            payment_method = latest_txn.provider or provider
+            try:
+                payment_date = timezone.localtime(latest_txn.created_at).strftime('%Y-%m-%d %H:%M:%S %Z')
+            except Exception:
+                payment_date = str(latest_txn.created_at)
         customer_message = (
             f'Payment for order {order.order_number} has been confirmed.\n\n'
             f'Payment Provider: {provider}\n'
@@ -322,6 +409,22 @@ def _send_order_paid_notifications(order, provider='unknown'):
             message=customer_message,
             recipient_list=[recipient_email],
             event_name='order.paid.customer',
+            html_message=render_react_email_html(
+                'PaymentConfirmationEmail',
+                {
+                    'userName': (order.user.get_full_name() or order.user.username) if order.user else '',
+                    'orderNumber': order.order_number,
+                    'amountText': f'${order.total}',
+                    'provider': provider,
+                    'paymentMethod': payment_method,
+                    'paymentDate': payment_date,
+                    'transactionId': transaction_id,
+                    'statusText': 'Successful',
+                    'orderUrl': f'{site_root}/account',
+                    'siteName': 'De-Rukkies Collections',
+                    'supportEmail': _contact_recipient(),
+                },
+            ),
         )
         _create_user_mailbox_message(
             order.user,
@@ -865,6 +968,7 @@ def newsletter_subscribe(request):
         logger.info('newsletter.subscribe reactivated email=%s source=%s', email, source or subscriber.source)
 
     if created or not already_subscribed:
+        site_root = get_public_site_url()
         _safe_send_email(
             subject='You are subscribed to De-Rukkies updates',
             message=(
@@ -873,6 +977,16 @@ def newsletter_subscribe(request):
             ),
             recipient_list=[email],
             event_name='newsletter.confirmation',
+            html_message=render_react_email_html(
+                'SubscriptionEmail',
+                {
+                    'userName': '',
+                    'shopUrl': f'{site_root}/products',
+                    'promoCode': 'SUBSCRIBED10',
+                    'siteName': 'De-Rukkies Collections',
+                    'supportEmail': _contact_recipient(),
+                },
+            ),
         )
     logger.info(
         'newsletter.subscribe completed email=%s created=%s already_subscribed=%s source=%s',
@@ -2412,6 +2526,29 @@ def verify_email_view(request, uidb64, token):
             user.is_active = True
             user.save(update_fields=['is_active'])
             logger.info('auth.verify activated user_id=%s username=%s ip=%s', user.id, user.username, client_ip)
+            if user.email:
+                subject = 'Welcome to De-Rukkies Collections'
+                welcome_message = (
+                    f'Hi {user.get_full_name() or user.username},\n\n'
+                    'Your email has been verified successfully. Your account is now active.\n\n'
+                    'Welcome to De-Rukkies Collections.'
+                )
+                _safe_send_email(
+                    subject=subject,
+                    message=welcome_message,
+                    recipient_list=[user.email],
+                    event_name='auth.verify.welcome',
+                    html_message=render_react_email_html(
+                        'WelcomeEmail',
+                        {
+                            'userName': user.get_full_name() or user.username,
+                            'shopUrl': f'{get_public_site_url(request)}/products',
+                            'promoCode': 'WELCOME15',
+                            'siteName': 'De-Rukkies Collections',
+                            'supportEmail': _contact_recipient(),
+                        },
+                    ),
+                )
             _create_user_notification(
                 user,
                 title='Email verified',

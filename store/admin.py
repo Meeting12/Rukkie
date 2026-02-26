@@ -34,6 +34,7 @@ from .models import (
 )
 from .media_layout import normalize_slug, ensure_category_media_structure, category_media_paths
 from .tasks import analyze_and_apply_image
+from .email_react import get_public_site_url, render_react_email_html
 
 logger = logging.getLogger(__name__)
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg', '.avif'}
@@ -1100,8 +1101,32 @@ class OrderAdmin(admin.ModelAdmin):
 					"Thanks,\nThe Team"
 				)
 				from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', settings.EMAIL_HOST_USER if hasattr(settings, 'EMAIL_HOST_USER') else 'no-reply@example.com')
+				shipping_address = ''
 				try:
-					send_mail(subject, body, from_email, [user.email], fail_silently=True)
+					addr = getattr(order, 'shipping_address', None)
+					if addr:
+						shipping_address = ", ".join(
+							[p for p in [addr.line1, addr.city, addr.country] if p]
+						)
+				except Exception:
+					shipping_address = ''
+				html_body = render_react_email_html(
+					'ShippingEmail',
+					{
+						'userName': name,
+						'orderNumber': order.order_number,
+						'carrier': 'Courier',
+						'estimatedDelivery': '',
+						'deliveryAddress': shipping_address,
+						'trackingNumber': '',
+						'trackingUrl': '',
+						'orderUrl': f"{get_public_site_url(request)}/account",
+						'siteName': 'De-Rukkies Collections',
+						'supportEmail': getattr(settings, 'CONTACT_RECIPIENT_EMAIL', '') or getattr(settings, 'DEFAULT_FROM_EMAIL', ''),
+					}
+				)
+				try:
+					send_mail(subject, body, from_email, [user.email], html_message=html_body, fail_silently=True)
 					sent += 1
 				except Exception:
 					# fail silently; admin can re-send manually
