@@ -12,7 +12,7 @@ from django.db.models import Count, Q, Avg
 from .serializers import (
     ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer,
     ShippingMethodSerializer, AddressSerializer, CategorySerializer, HomeHeroSlideSerializer, ProductReviewSerializer,
-    UserNotificationSerializer, UserMailboxMessageSerializer,
+    UserNotificationSerializer, UserMailboxMessageSerializer, _resolve_image_url,
 )
 from django.db import transaction
 from decimal import Decimal, InvalidOperation
@@ -318,7 +318,10 @@ def _send_order_created_notifications(order, contact_email=None):
                     first_image = item.product.images.first()
                     image_url = ''
                     if first_image and getattr(first_image, 'image', None):
-                        image_url = str(first_image.image.url or '').strip()
+                        image_url = _resolve_image_url(getattr(first_image, 'image', None), request=None) or ''
+                        image_url = str(image_url).strip()
+                        if image_url.startswith('/'):
+                            image_url = f'{site_root}{image_url}'
                     if image_url:
                         order_items_summary[-1]['imageUrl'] = image_url
                 except Exception:

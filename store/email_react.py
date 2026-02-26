@@ -268,7 +268,7 @@ def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
         items_html = ""
         raw_items = props.get("items")
         if isinstance(raw_items, list) and raw_items:
-            rows = []
+            item_cards = []
             for item in raw_items:
                 if not isinstance(item, dict):
                     continue
@@ -278,32 +278,32 @@ def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
                 line_total = _text(item.get("lineTotalText"))
                 image_url = _text(item.get("imageUrl"))
                 qty_line = f"Qty: {qty}" + (f" - {unit_price} each" if unit_price else "")
-                rows.append(
-                    f"""
-                    <tr>
-                      <td style="padding:10px 0;border-bottom:1px solid #E7DDD0;">
-                        <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
-                          <tr>
-                            {f'<td style="padding-right:10px;vertical-align:top;"><img src="{escape(image_url)}" alt="{escape(name)}" width="56" height="56" style="width:56px;height:56px;object-fit:cover;border-radius:8px;display:block;border:1px solid #E7DDD0;background:#fff;"></td>' if image_url else ''}
-                            <td style="vertical-align:top;">
-                              <p style="margin:0;color:#3A2F28;font-size:13px;font-weight:600;">{escape(name)}</p>
-                              <p style="margin:3px 0 0;color:#7A6E63;font-size:12px;">{escape(qty_line)}</p>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                      <td style="padding:10px 0;border-bottom:1px solid #E7DDD0;text-align:right;white-space:nowrap;color:#3A2F28;font-size:13px;font-weight:700;">{escape(line_total)}</td>
-                    </tr>
-                    """
+                item_cards.append(
+                    (
+                        '<div style="background:#FFFFFF;border:1px solid #E7DDD0;border-radius:10px;padding:12px;'
+                        'margin-bottom:10px;">'
+                        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">'
+                        '<tr>'
+                        '<td style="vertical-align:top;">'
+                        '<table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;"><tr>'
+                        + (f'<td style="padding-right:12px;vertical-align:top;"><img src="{escape(image_url)}" alt="{escape(name)}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:8px;display:block;border:1px solid #E7DDD0;background:#fff;"></td>' if image_url else '')
+                        + '<td style="vertical-align:top;">'
+                        + f'<p style="margin:0;color:#3A2F28;font-size:13px;font-weight:700;">{escape(name)}</p>'
+                        + f'<p style="margin:6px 0 0;color:#7A6E63;font-size:12px;">Qty: {escape(qty)}</p>'
+                        + (f'<p style="margin:4px 0 0;color:#7A6E63;font-size:12px;">{escape(unit_price)} each</p>' if unit_price else '')
+                        + '</td></tr></table>'
+                        '</td>'
+                        + f'<td style="vertical-align:middle;text-align:right;white-space:nowrap;color:#3A2F28;font-size:14px;font-weight:700;padding-left:12px;">{escape(line_total)}</td>'
+                        '</tr></table></div>'
+                    )
                 )
-            if rows:
-                rows[-1] = rows[-1].replace("border-bottom:1px solid #E7DDD0;", "border-bottom:none;", 2)
+            if item_cards:
+                item_cards[-1] = item_cards[-1].replace('margin-bottom:10px;', 'margin-bottom:0;', 1)
                 items_html = (
                     '<div style="background:#FBF8F2;border:1px solid #E7DDD0;border-radius:14px;padding:14px 16px;margin:16px 0 20px;">'
                     '<p style="margin:0 0 10px;color:#7A6E63;font-size:12px;font-weight:600;">Order Summary</p>'
-                    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">'
-                    + "".join(rows)
-                    + "</table></div>"
+                    + "".join(item_cards)
+                    + "</div>"
                 )
         intro = (
             ("Hi " + _text(props.get("userName")) + ", We're preparing your items with care. Here's a summary of your order.")

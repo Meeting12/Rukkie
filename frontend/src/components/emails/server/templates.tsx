@@ -443,68 +443,85 @@ function OrderConfirmationEmail(props: TemplateProps) {
         {items.length ? (
           <div style={styles.card}>
             <p style={{ ...styles.rowLabel, marginBottom: 10 }}>Order Summary</p>
-            <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} style={{ borderCollapse: "collapse" }}>
-              <tbody>
-                {items.map((item, index) => {
-                  const name = asText(item?.name, "Product");
-                  const qty = asText(item?.quantity, "1");
-                  const unitPriceText = asText(item?.unitPriceText);
-                  const lineTotalText = asText(item?.lineTotalText);
-                  const imageUrl = asText(item?.imageUrl);
-                  return (
-                    <tr key={`${name}-${index}`}>
-                      <td style={{ padding: "10px 0", borderBottom: index === items.length - 1 ? "none" : `1px solid ${colors.border}` }}>
-                        <table role="presentation" cellPadding={0} cellSpacing={0} style={{ borderCollapse: "collapse" }}>
-                          <tbody>
-                            <tr>
-                              {imageUrl ? (
-                                <td style={{ paddingRight: 10, verticalAlign: "top" }}>
-                                  <img
-                                    src={imageUrl}
-                                    alt={name}
-                                    width={56}
-                                    height={56}
-                                    style={{
-                                      width: 56,
-                                      height: 56,
-                                      objectFit: "cover",
-                                      borderRadius: 8,
-                                      display: "block",
-                                      border: `1px solid ${colors.border}`,
-                                      background: "#fff",
-                                    }}
-                                  />
-                                </td>
-                              ) : null}
-                              <td style={{ verticalAlign: "top" }}>
-                                <p style={{ margin: 0, color: colors.text, fontSize: 13, fontWeight: 600 }}>{name}</p>
-                                <p style={{ margin: "3px 0 0", color: colors.muted, fontSize: 12 }}>
-                                  Qty: {qty}
-                                  {unitPriceText ? ` - ${unitPriceText} each` : ""}
-                                </p>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </td>
-                      <td
-                        style={{
-                          padding: "10px 0",
-                          borderBottom: index === items.length - 1 ? "none" : `1px solid ${colors.border}`,
-                          textAlign: "right",
-                          whiteSpace: "nowrap",
-                          color: colors.text,
-                          fontSize: 13,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {lineTotalText}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div>
+              {items.map((item, index) => {
+                const name = asText(item?.name, "Product");
+                const qty = asText(item?.quantity, "1");
+                const unitPriceText = asText(item?.unitPriceText);
+                const lineTotalText = asText(item?.lineTotalText);
+                const imageUrl = asText(item?.imageUrl);
+                return (
+                  <div
+                    key={`${name}-${index}`}
+                    style={{
+                      background: "#FFFFFF",
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 10,
+                      padding: 12,
+                      marginBottom: index === items.length - 1 ? 0 : 10,
+                    }}
+                  >
+                    <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} style={{ borderCollapse: "collapse" }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ verticalAlign: "top" }}>
+                            <table role="presentation" cellPadding={0} cellSpacing={0} style={{ borderCollapse: "collapse" }}>
+                              <tbody>
+                                <tr>
+                                  {imageUrl ? (
+                                    <td style={{ paddingRight: 12, verticalAlign: "top" }}>
+                                      <img
+                                        src={imageUrl}
+                                        alt={name}
+                                        width={80}
+                                        height={80}
+                                        style={{
+                                          width: 80,
+                                          height: 80,
+                                          objectFit: "cover",
+                                          borderRadius: 8,
+                                          display: "block",
+                                          border: `1px solid ${colors.border}`,
+                                          background: "#fff",
+                                        }}
+                                      />
+                                    </td>
+                                  ) : null}
+                                  <td style={{ verticalAlign: "top" }}>
+                                    <p style={{ margin: 0, color: colors.text, fontSize: 13, fontWeight: 700 }}>{name}</p>
+                                    <p style={{ margin: "6px 0 0", color: colors.muted, fontSize: 12 }}>
+                                      Qty: {qty}
+                                    </p>
+                                    {unitPriceText ? (
+                                      <p style={{ margin: "4px 0 0", color: colors.muted, fontSize: 12 }}>
+                                        {unitPriceText} each
+                                      </p>
+                                    ) : null}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                          <td
+                            style={{
+                              verticalAlign: "middle",
+                              textAlign: "right",
+                              whiteSpace: "nowrap",
+                              color: colors.text,
+                              fontSize: 14,
+                              fontWeight: 700,
+                              paddingLeft: 12,
+                            }}
+                          >
+                            {lineTotalText}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ) : null}
 
