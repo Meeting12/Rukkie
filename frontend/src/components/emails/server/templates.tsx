@@ -192,12 +192,38 @@ function InfoRows({ rows }: { rows: Array<{ label: string; value?: string | null
   const filtered = rows.filter((row) => row.value);
   return (
     <div style={styles.card}>
-      {filtered.map((row, index) => (
-        <div key={row.label} style={index === filtered.length - 1 ? styles.rowLast : styles.row}>
-          <p style={styles.rowLabel}>{row.label}</p>
-          <p style={styles.rowValue}>{row.value}</p>
-        </div>
-      ))}
+      <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} style={{ borderCollapse: "collapse" }}>
+        <tbody>
+          {filtered.map((row, index) => (
+            <tr key={row.label}>
+              <td
+                style={{
+                  padding: "8px 0",
+                  borderBottom: index === filtered.length - 1 ? "none" : `1px solid ${colors.border}`,
+                  color: colors.muted,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  textAlign: "left",
+                }}
+              >
+                {row.label}
+              </td>
+              <td
+                style={{
+                  padding: "8px 0",
+                  borderBottom: index === filtered.length - 1 ? "none" : `1px solid ${colors.border}`,
+                  color: colors.text,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textAlign: "right",
+                }}
+              >
+                {row.value}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -327,37 +353,76 @@ function PaymentConfirmationEmail(props: TemplateProps) {
   const transactionId = asText(props.transactionId);
   const orderUrl = asText(props.orderUrl);
   const userName = asText(props.userName);
+  const supportEmailSafe = asText(props.supportEmail);
+  const orderReference = orderNumber ? (orderNumber.startsWith("#") ? orderNumber : `#${orderNumber}`) : "";
 
   return (
     <EmailShell siteName={siteName} supportEmail={supportEmail}>
       <div style={styles.content}>
-        <h1 style={styles.title}>Payment Received</h1>
-        <p style={styles.subtitle}>{orderNumber ? `Order ${orderNumber}` : "Your payment has been confirmed"}</p>
-        {userName ? <p style={styles.p}>Hi {userName}, your payment was processed successfully.</p> : null}
+        <div style={{ textAlign: "center", marginBottom: 12 }}>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: "9999px",
+              margin: "0 auto 12px",
+              background: "rgba(198,169,107,0.20)",
+              color: colors.goldDark,
+              fontSize: 24,
+              lineHeight: "56px",
+              fontWeight: 700,
+            }}
+          >
+            &#128179;
+          </div>
+          <h1 style={{ ...styles.title, marginBottom: 6 }}>Payment Received</h1>
+          <p style={{ ...styles.subtitle, marginBottom: 0 }}>
+            {transactionId ? `Transaction ID: ${transactionId}` : "Transaction completed"}
+          </p>
+          <div style={{ width: 48, height: 2, background: colors.gold, margin: "14px auto 0" }} />
+        </div>
+
+        <p style={styles.p}>We&apos;ve successfully processed your payment. Here are your transaction details:</p>
+
         <InfoRows
           rows={[
             { label: "Amount Paid", value: amountText },
-            { label: "Provider", value: provider },
             { label: "Payment Method", value: paymentMethod },
             { label: "Date", value: paymentDate },
-            { label: "Transaction ID", value: transactionId },
-            { label: "Status", value: statusText },
+            { label: "Order Reference", value: orderReference },
+            { label: "Status", value: "✓ Successful" },
           ]}
         />
+
         <div
           style={{
-            backgroundColor: colors.successBg,
-            color: colors.successText,
-            border: "1px solid #ABEFC6",
+            backgroundColor: "#FFF8E8",
+            border: "1px solid #F3E4B5",
             borderRadius: 12,
             padding: "12px 14px",
             marginBottom: 18,
-            fontSize: 13,
+            fontSize: 12,
+            color: colors.muted,
           }}
         >
-          We have received your payment and your order is now being processed.
+          A receipt has been sent to your email. If you did not authorize this transaction,
+          {supportEmailSafe ? (
+            <>
+              {" "}
+              please{" "}
+              <a href={`mailto:${supportEmailSafe}`} style={{ color: colors.goldDark, fontWeight: 700, textDecoration: "none" }}>
+                contact our support team
+              </a>{" "}
+              immediately.
+            </>
+          ) : (
+            " please contact our support team immediately."
+          )}
         </div>
-        <EmailButton href={orderUrl} label="View Order" />
+
+        <div style={{ textAlign: "center" }}>
+          <EmailButton href={orderUrl} label="View Order Details" />
+        </div>
       </div>
     </EmailShell>
   );
@@ -433,12 +498,10 @@ function OrderConfirmationEmail(props: TemplateProps) {
           </div>
           <h1 style={{ ...styles.title, marginBottom: 6 }}>Order Confirmed!</h1>
           <p style={{ ...styles.subtitle, marginBottom: 0 }}>{orderNumber ? `Order ${orderNumber}` : "Your order has been received"}</p>
+          <div style={{ width: 48, height: 2, background: colors.gold, margin: "14px auto 0" }} />
         </div>
 
-        <p style={styles.p}>
-          {userName ? `Hi ${userName}, ` : ""}
-          We&apos;re preparing your items with care. Here&apos;s a summary of your order.
-        </p>
+        <p style={styles.p}>Thank you for your purchase! We&apos;re preparing your items with care. Here&apos;s a summary of your order:</p>
 
         {items.length ? (
           <div style={styles.card}>
@@ -530,7 +593,6 @@ function OrderConfirmationEmail(props: TemplateProps) {
             { label: "Order Number", value: orderNumber },
             { label: "Status", value: statusText },
             { label: "Subtotal", value: subtotalText },
-            { label: "Shipping", value: shippingText },
             { label: "Tax", value: taxText },
             { label: "Total", value: totalText },
           ]}

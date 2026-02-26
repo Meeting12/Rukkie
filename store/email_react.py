@@ -126,13 +126,15 @@ def _card(rows):
         items.append(
             f"""
             <tr>
-              <td style="padding:8px 0;color:#7A6E63;font-size:12px;font-weight:600;">{escape(str(label))}</td>
-              <td style="padding:8px 0;color:#3A2F28;font-size:13px;font-weight:600;text-align:right;">{escape(value)}</td>
+              <td style="padding:8px 0;color:#7A6E63;font-size:12px;font-weight:600;text-align:left;border-bottom:1px solid #E7DDD0;">{escape(str(label))}</td>
+              <td style="padding:8px 0;color:#3A2F28;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #E7DDD0;">{escape(value)}</td>
             </tr>
             """
         )
     if not items:
         return ""
+    if items:
+        items[-1] = items[-1].replace('border-bottom:1px solid #E7DDD0;', 'border-bottom:none;', 2)
     return (
         '<div style="background:#FBF8F2;border:1px solid #E7DDD0;border-radius:14px;padding:14px 16px;margin:16px 0 20px;">'
         '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">'
@@ -223,22 +225,40 @@ def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
         return _wrap_email(title="Unusual Login Detected", subtitle="Security alert for your account", body_html=body_html, site_name=site_name, support_email=support_email)
 
     if template_name == "PaymentConfirmationEmail":
+        transaction_id = _text(props.get("transactionId"))
+        order_reference = _text(props.get("orderNumber"))
+        if order_reference and not order_reference.startswith("#"):
+            order_reference = f"#{order_reference}"
+        support_mail = _text(props.get("supportEmail"))
+        pay_intro = "We’ve successfully processed your payment. Here are your transaction details:"
         body_html = (
-            f'<p style="margin:0 0 16px;color:#7A6E63;font-size:14px;">{escape(("Hi " + _text(props.get("userName")) + ", your payment was processed successfully.") if _text(props.get("userName")) else "Your payment was processed successfully.")}</p>'
+            '<div style="text-align:center;margin-bottom:12px;">'
+            '<div style="width:56px;height:56px;border-radius:9999px;margin:0 auto 12px;background:rgba(198,169,107,0.20);color:#B6944D;font-size:24px;line-height:56px;font-weight:700;">&#128179;</div>'
+            '<div style="width:48px;height:2px;background:#C6A96B;margin:14px auto 0;"></div>'
+            '</div>'
+            + f'<p style="margin:0 0 16px;color:#7A6E63;font-size:14px;">{escape(pay_intro)}</p>'
             + _card([
                 ("Amount Paid", _money(props.get("amountText"))),
-                ("Provider", _text(props.get("provider")).title()),
                 ("Payment Method", props.get("paymentMethod")),
                 ("Date", props.get("paymentDate")),
-                ("Transaction ID", props.get("transactionId")),
-                ("Status", _text(props.get("statusText"), "Successful")),
+                ("Order Reference", order_reference),
+                ("Status", "✓ Successful"),
             ])
-            + '<div style="background:#ECFDF3;border:1px solid #ABEFC6;color:#027A48;border-radius:12px;padding:12px 14px;margin:0 0 18px;font-size:13px;">We have received your payment and your order is now being processed.</div>'
-            + _button(props.get("orderUrl"), "View Order")
+            + (
+                '<div style="background:#FFF8E8;border:1px solid #F3E4B5;color:#7A6E63;border-radius:12px;padding:12px 14px;margin:0 0 18px;font-size:12px;">'
+                + 'A receipt has been sent to your email. If you did not authorize this transaction, '
+                + (
+                    f'please <a href="mailto:{escape(support_mail)}" style="color:#B6944D;font-weight:700;text-decoration:none;">contact our support team</a> immediately.'
+                    if support_mail else
+                    'please contact our support team immediately.'
+                )
+                + '</div>'
+            )
+            + f'<div style="text-align:center;">{_button(props.get("orderUrl"), "View Order Details")}</div>'
         )
         return _wrap_email(
             title="Payment Received",
-            subtitle=_text(props.get("orderNumber"), "Payment confirmed"),
+            subtitle=(f"Transaction ID: {transaction_id}" if transaction_id else "Transaction completed"),
             body_html=body_html,
             site_name=site_name,
             support_email=support_email,
@@ -305,14 +325,11 @@ def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
                     + "".join(item_cards)
                     + "</div>"
                 )
-        intro = (
-            ("Hi " + _text(props.get("userName")) + ", We're preparing your items with care. Here's a summary of your order.")
-            if _text(props.get("userName"))
-            else "We're preparing your items with care. Here's a summary of your order."
-        )
+        intro = "Thank you for your purchase! We're preparing your items with care. Here's a summary of your order:"
         body_html = (
             '<div style="text-align:center;margin-bottom:12px;">'
             '<div style="width:56px;height:56px;border-radius:9999px;margin:0 auto 12px;background:rgba(198,169,107,0.20);color:#B6944D;font-size:28px;line-height:56px;font-weight:700;">&#10003;</div>'
+            '<div style="width:48px;height:2px;background:#C6A96B;margin:14px auto 0;"></div>'
             '</div>'
             + f'<p style="margin:0 0 16px;color:#7A6E63;font-size:14px;">{escape(intro)}</p>'
             + items_html
@@ -320,7 +337,6 @@ def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
                 ("Order Number", props.get("orderNumber")),
                 ("Status", props.get("statusText")),
                 ("Subtotal", props.get("subtotalText")),
-                ("Shipping", props.get("shippingText")),
                 ("Tax", props.get("taxText")),
                 ("Total", _money(props.get("totalText"))),
             ])
@@ -336,7 +352,7 @@ def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
         body_html += f'<div style="text-align:center;">{_button(props.get("orderUrl"), "Track Your Order")}</div>'
         return _wrap_email(
             title="Order Confirmed!",
-            subtitle=_text(props.get("orderNumber"), "Your order has been received"),
+            subtitle=(f'Order {_text(props.get("orderNumber"))}' if _text(props.get("orderNumber")) else "Your order has been received"),
             body_html=body_html,
             site_name=site_name,
             support_email=support_email,

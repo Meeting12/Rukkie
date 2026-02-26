@@ -320,8 +320,14 @@ def _send_order_created_notifications(order, contact_email=None):
                     if first_image and getattr(first_image, 'image', None):
                         image_url = _resolve_image_url(getattr(first_image, 'image', None), request=None) or ''
                         image_url = str(image_url).strip()
-                        if image_url.startswith('/'):
+                        if image_url.startswith('//'):
+                            image_url = f'https:{image_url}'
+                        elif image_url.startswith('/'):
                             image_url = f'{site_root}{image_url}'
+                        # Email clients are inconsistent with modern formats like WebP/AVIF.
+                        # Prefer a JPEG Cloudinary transformation for transactional email thumbnails.
+                        if 'res.cloudinary.com/' in image_url and '/image/upload/' in image_url and '/f_jpg' not in image_url:
+                            image_url = image_url.replace('/image/upload/', '/image/upload/f_jpg,q_auto/', 1)
                     if image_url:
                         order_items_summary[-1]['imageUrl'] = image_url
                 except Exception:
