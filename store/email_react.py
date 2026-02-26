@@ -265,8 +265,57 @@ def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
         )
 
     if template_name == "OrderConfirmationEmail":
+        items_html = ""
+        raw_items = props.get("items")
+        if isinstance(raw_items, list) and raw_items:
+            rows = []
+            for item in raw_items:
+                if not isinstance(item, dict):
+                    continue
+                name = _text(item.get("name"), "Product")
+                qty = _text(item.get("quantity"), "1")
+                unit_price = _text(item.get("unitPriceText"))
+                line_total = _text(item.get("lineTotalText"))
+                image_url = _text(item.get("imageUrl"))
+                qty_line = f"Qty: {qty}" + (f" - {unit_price} each" if unit_price else "")
+                rows.append(
+                    f"""
+                    <tr>
+                      <td style="padding:10px 0;border-bottom:1px solid #E7DDD0;">
+                        <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                          <tr>
+                            {f'<td style="padding-right:10px;vertical-align:top;"><img src="{escape(image_url)}" alt="{escape(name)}" width="56" height="56" style="width:56px;height:56px;object-fit:cover;border-radius:8px;display:block;border:1px solid #E7DDD0;background:#fff;"></td>' if image_url else ''}
+                            <td style="vertical-align:top;">
+                              <p style="margin:0;color:#3A2F28;font-size:13px;font-weight:600;">{escape(name)}</p>
+                              <p style="margin:3px 0 0;color:#7A6E63;font-size:12px;">{escape(qty_line)}</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td style="padding:10px 0;border-bottom:1px solid #E7DDD0;text-align:right;white-space:nowrap;color:#3A2F28;font-size:13px;font-weight:700;">{escape(line_total)}</td>
+                    </tr>
+                    """
+                )
+            if rows:
+                rows[-1] = rows[-1].replace("border-bottom:1px solid #E7DDD0;", "border-bottom:none;", 2)
+                items_html = (
+                    '<div style="background:#FBF8F2;border:1px solid #E7DDD0;border-radius:14px;padding:14px 16px;margin:16px 0 20px;">'
+                    '<p style="margin:0 0 10px;color:#7A6E63;font-size:12px;font-weight:600;">Order Summary</p>'
+                    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">'
+                    + "".join(rows)
+                    + "</table></div>"
+                )
+        intro = (
+            ("Hi " + _text(props.get("userName")) + ", We're preparing your items with care. Here's a summary of your order.")
+            if _text(props.get("userName"))
+            else "We're preparing your items with care. Here's a summary of your order."
+        )
         body_html = (
-            f'<p style="margin:0 0 16px;color:#7A6E63;font-size:14px;">{escape(("Hi " + _text(props.get("userName")) + ", thank you for your purchase. We have received your order.") if _text(props.get("userName")) else "Thank you for your purchase. We have received your order.")}</p>'
+            '<div style="text-align:center;margin-bottom:12px;">'
+            '<div style="width:56px;height:56px;border-radius:9999px;margin:0 auto 12px;background:rgba(198,169,107,0.20);color:#B6944D;font-size:28px;line-height:56px;font-weight:700;">&#10003;</div>'
+            '</div>'
+            + f'<p style="margin:0 0 16px;color:#7A6E63;font-size:14px;">{escape(intro)}</p>'
+            + items_html
             + _card([
                 ("Order Number", props.get("orderNumber")),
                 ("Status", props.get("statusText")),
@@ -284,9 +333,9 @@ def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
                 f'<p style="margin:0;color:#3A2F28;font-size:13px;white-space:pre-line;">{escape(address_text)}</p>'
                 '</div>'
             )
-        body_html += _button(props.get("orderUrl"), "View Order")
+        body_html += f'<div style="text-align:center;">{_button(props.get("orderUrl"), "Track Your Order")}</div>'
         return _wrap_email(
-            title="Order Confirmed",
+            title="Order Confirmed!",
             subtitle=_text(props.get("orderNumber"), "Your order has been received"),
             body_html=body_html,
             site_name=site_name,

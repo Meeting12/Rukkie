@@ -203,6 +203,13 @@ function InfoRows({ rows }: { rows: Array<{ label: string; value?: string | null
 }
 
 type TemplateProps = Record<string, unknown>;
+type EmailOrderItem = {
+  name?: string;
+  quantity?: number | string;
+  unitPriceText?: string;
+  lineTotalText?: string;
+  imageUrl?: string;
+};
 
 function asText(v: unknown, fallback = "") {
   const s = typeof v === "string" ? v.trim() : String(v ?? "").trim();
@@ -403,16 +410,104 @@ function OrderConfirmationEmail(props: TemplateProps) {
   const subtotalText = asText(props.subtotalText);
   const addressText = asText(props.addressText);
   const orderUrl = asText(props.orderUrl);
+  const items = (Array.isArray(props.items) ? props.items : []) as EmailOrderItem[];
 
   return (
     <EmailShell siteName={siteName} supportEmail={supportEmail}>
       <div style={styles.content}>
-        <h1 style={styles.title}>Order Confirmed</h1>
-        <p style={styles.subtitle}>{orderNumber ? `Order ${orderNumber}` : "Your order has been received"}</p>
+        <div style={{ textAlign: "center", marginBottom: 12 }}>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: "9999px",
+              margin: "0 auto 12px",
+              background: "rgba(198,169,107,0.20)",
+              color: colors.goldDark,
+              fontSize: 28,
+              lineHeight: "56px",
+              fontWeight: 700,
+            }}
+          >
+            &#10003;
+          </div>
+          <h1 style={{ ...styles.title, marginBottom: 6 }}>Order Confirmed!</h1>
+          <p style={{ ...styles.subtitle, marginBottom: 0 }}>{orderNumber ? `Order ${orderNumber}` : "Your order has been received"}</p>
+        </div>
+
         <p style={styles.p}>
           {userName ? `Hi ${userName}, ` : ""}
-          thank you for your purchase. We have received your order and will notify you when payment is confirmed and the order advances.
+          We&apos;re preparing your items with care. Here&apos;s a summary of your order.
         </p>
+
+        {items.length ? (
+          <div style={styles.card}>
+            <p style={{ ...styles.rowLabel, marginBottom: 10 }}>Order Summary</p>
+            <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} style={{ borderCollapse: "collapse" }}>
+              <tbody>
+                {items.map((item, index) => {
+                  const name = asText(item?.name, "Product");
+                  const qty = asText(item?.quantity, "1");
+                  const unitPriceText = asText(item?.unitPriceText);
+                  const lineTotalText = asText(item?.lineTotalText);
+                  const imageUrl = asText(item?.imageUrl);
+                  return (
+                    <tr key={`${name}-${index}`}>
+                      <td style={{ padding: "10px 0", borderBottom: index === items.length - 1 ? "none" : `1px solid ${colors.border}` }}>
+                        <table role="presentation" cellPadding={0} cellSpacing={0} style={{ borderCollapse: "collapse" }}>
+                          <tbody>
+                            <tr>
+                              {imageUrl ? (
+                                <td style={{ paddingRight: 10, verticalAlign: "top" }}>
+                                  <img
+                                    src={imageUrl}
+                                    alt={name}
+                                    width={56}
+                                    height={56}
+                                    style={{
+                                      width: 56,
+                                      height: 56,
+                                      objectFit: "cover",
+                                      borderRadius: 8,
+                                      display: "block",
+                                      border: `1px solid ${colors.border}`,
+                                      background: "#fff",
+                                    }}
+                                  />
+                                </td>
+                              ) : null}
+                              <td style={{ verticalAlign: "top" }}>
+                                <p style={{ margin: 0, color: colors.text, fontSize: 13, fontWeight: 600 }}>{name}</p>
+                                <p style={{ margin: "3px 0 0", color: colors.muted, fontSize: 12 }}>
+                                  Qty: {qty}
+                                  {unitPriceText ? ` - ${unitPriceText} each` : ""}
+                                </p>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </td>
+                      <td
+                        style={{
+                          padding: "10px 0",
+                          borderBottom: index === items.length - 1 ? "none" : `1px solid ${colors.border}`,
+                          textAlign: "right",
+                          whiteSpace: "nowrap",
+                          color: colors.text,
+                          fontSize: 13,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {lineTotalText}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
         <InfoRows
           rows={[
             { label: "Order Number", value: orderNumber },
@@ -423,13 +518,17 @@ function OrderConfirmationEmail(props: TemplateProps) {
             { label: "Total", value: totalText },
           ]}
         />
+
         {addressText ? (
           <div style={{ ...styles.card, marginTop: 0 }}>
             <p style={{ ...styles.rowLabel, marginBottom: 8 }}>Shipping Address</p>
             <p style={{ margin: 0, color: colors.text, fontSize: 13, whiteSpace: "pre-line" }}>{addressText}</p>
           </div>
         ) : null}
-        <EmailButton href={orderUrl} label="View Order" />
+
+        <div style={{ textAlign: "center" }}>
+          <EmailButton href={orderUrl} label="Track Your Order" />
+        </div>
       </div>
     </EmailShell>
   );

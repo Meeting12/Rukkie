@@ -295,12 +295,39 @@ def _send_order_created_notifications(order, contact_email=None):
         shipping_text = ''
         tax_text = ''
         subtotal_text = ''
+        order_items_summary = []
         try:
             items_qs = order.items.select_related('product').all()
+            for item in items_qs:
+                try:
+                    qty = int(item.quantity or 0)
+                except Exception:
+                    qty = 0
+                unit_price = Decimal(str(item.price or 0)).quantize(Decimal("0.01"))
+                line_total = (unit_price * Decimal(str(qty or 0))).quantize(Decimal("0.01"))
+                order_items_summary.append(
+                    {
+                        'name': str(getattr(item.product, 'name', '') or 'Product').strip(),
+                        'quantity': qty,
+                        'unitPriceText': f'${unit_price}',
+                        'lineTotalText': f'${line_total}',
+                        'imageUrl': '',
+                    }
+                )
+                try:
+                    first_image = item.product.images.first()
+                    image_url = ''
+                    if first_image and getattr(first_image, 'image', None):
+                        image_url = str(first_image.image.url or '').strip()
+                    if image_url:
+                        order_items_summary[-1]['imageUrl'] = image_url
+                except Exception:
+                    pass
             subtotal = sum((Decimal(str(item.price or 0)) * Decimal(str(item.quantity or 0))) for item in items_qs)
             subtotal_text = f'${subtotal.quantize(Decimal("0.01"))}'
         except Exception:
             subtotal_text = ''
+            order_items_summary = []
         try:
             if getattr(order, 'shipping_method', None):
                 shipping_text = f'${Decimal(str(order.shipping_method.price or 0)).quantize(Decimal("0.01"))}'
@@ -345,6 +372,7 @@ def _send_order_created_notifications(order, contact_email=None):
                     'subtotalText': subtotal_text,
                     'shippingText': shipping_text,
                     'taxText': tax_text,
+                    'items': order_items_summary,
                     'addressText': address_text,
                     'orderUrl': f'{site_root}/account',
                     'siteName': 'De-Rukkies Collections',
@@ -383,9 +411,11 @@ def _send_order_created_notifications(order, contact_email=None):
 
 
 def _send_order_paid_notifications(order, provider='unknown'):
+    latest_txn = order.transactions.filter(success=True).order_by('-created_at', '-id').first()
     recipient_email = order.user.email if order.user and order.user.email else ''
+    if not recipient_email and latest_txn and getattr(latest_txn, 'payer_email', ''):
+        recipient_email = str(latest_txn.payer_email).strip()
     if recipient_email:
-        latest_txn = order.transactions.order_by('-created_at', '-id').first()
         site_root = get_public_site_url()
         payment_date = ''
         payment_method = provider
@@ -1764,7 +1794,22 @@ def stripe_confirm_checkout_session(request):
         return Response({'error': 'amount_mismatch'}, status=400)
 
     provider_txn_id = getattr(session, 'payment_intent', None) or session_id
-    txn, created = _record_transaction(order, 'stripe', provider_txn_id, amount_decimal, {'session_id': session_id, 'payment_status': payment_status})
+    customer_details = getattr(session, 'customer_details', None) or {}
+    payer_email = ''
+    try:
+        payer_email = str((customer_details.get('email') if isinstance(customer_details, dict) else None) or getattr(session, 'customer_email', None) or '').strip()
+    except Exception:
+        payer_email = ''
+    txn, created = _record_transaction(
+        order,
+        'stripe',
+        provider_txn_id,
+        amount_decimal,
+        {'session_id': session_id, 'payment_status': payment_status},
+        status='completed',
+        currency=str(getattr(session, 'currency', '') or 'USD').upper(),
+        payer_email=payer_email,
+    )
     if created:
         became_paid = _mark_order_paid_and_finalize(order, provider='stripe', provider_txn_id=provider_txn_id or '')
         if became_paid:
@@ -2833,8 +2878,27 @@ def stripe_webhook(request):
                 order = None
 
             if order:
-                provider_txn_id = data.get('id') or data.get('payment_intent')
-                amount = (data.get('amount') or data.get('amount_received') or 0) / 100.0
+                if evtype == 'checkout.session.completed':
+                    provider_txn_id = data.get('payment_intent') or data.get('id')
+                    amount_cents = data.get('amount_total') or data.get('amount_subtotal') or data.get('amount')
+                    payer_email = str(
+                        ((data.get('customer_details') or {}).get('email') if isinstance(data.get('customer_details'), dict) else '')
+                        or data.get('customer_email')
+                        or ''
+                    ).strip()
+                    currency = str(data.get('currency') or 'USD').upper()
+                else:
+                    provider_txn_id = data.get('id') or data.get('payment_intent')
+                    amount_cents = data.get('amount_received') or data.get('amount')
+                    charges = (data.get('charges') or {}).get('data') or []
+                    charge0 = charges[0] if charges else {}
+                    payer_email = str(
+                        data.get('receipt_email')
+                        or ((charge0.get('billing_details') or {}).get('email') if isinstance(charge0, dict) else '')
+                        or ''
+                    ).strip()
+                    currency = str(data.get('currency') or 'USD').upper()
+                amount = (amount_cents or 0) / 100.0
                 if not _amount_matches_order_total(order, amount):
                     logger.warning(
                         'stripe.webhook amount_mismatch order_id=%s txn_id=%s provided=%s expected=%s',
@@ -2848,7 +2912,16 @@ def stripe_webhook(request):
                         raw_response={'event': 'webhook_amount_mismatch', 'payload': event},
                     )
                     return Response({'ok': True})
-                txn, created = _record_transaction(order, 'stripe', provider_txn_id, amount, event)
+                txn, created = _record_transaction(
+                    order,
+                    'stripe',
+                    provider_txn_id,
+                    amount,
+                    event,
+                    status='completed',
+                    currency=currency,
+                    payer_email=payer_email,
+                )
                 if created:
                     became_paid = _mark_order_paid_and_finalize(order, provider='stripe', provider_txn_id=provider_txn_id or '')
                     if became_paid:
