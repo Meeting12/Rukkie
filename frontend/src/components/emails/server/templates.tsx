@@ -38,6 +38,7 @@ const styles = {
     background: "linear-gradient(135deg, #2F2721, #493A2F)",
     padding: "24px 28px",
     color: "#fff",
+    textAlign: "center",
   } as React.CSSProperties,
   brand: {
     margin: 0,
@@ -108,6 +109,7 @@ const styles = {
     color: "rgba(255,255,255,0.82)",
     padding: "18px 28px 24px",
     borderTop: `1px solid rgba(255,255,255,0.08)`,
+    textAlign: "center",
   } as React.CSSProperties,
   footerSmall: {
     margin: "8px 0 0",
@@ -194,15 +196,16 @@ function InfoRows({ rows }: { rows: Array<{ label: string; value?: string | null
     <div style={styles.card}>
       <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} style={{ borderCollapse: "collapse" }}>
         <tbody>
-          {filtered.map((row, index) => (
+          {filtered.map((row) => {
+            const isTotal = row.label.trim().toLowerCase() === "total";
+            return (
             <tr key={row.label}>
               <td
                 style={{
                   padding: "8px 0",
-                  borderBottom: index === filtered.length - 1 ? "none" : `1px solid ${colors.border}`,
                   color: colors.muted,
                   fontSize: 12,
-                  fontWeight: 600,
+                  fontWeight: isTotal ? 700 : 600,
                   textAlign: "left",
                 }}
               >
@@ -211,17 +214,16 @@ function InfoRows({ rows }: { rows: Array<{ label: string; value?: string | null
               <td
                 style={{
                   padding: "8px 0",
-                  borderBottom: index === filtered.length - 1 ? "none" : `1px solid ${colors.border}`,
                   color: colors.text,
                   fontSize: 13,
-                  fontWeight: 600,
+                  fontWeight: isTotal ? 700 : 600,
                   textAlign: "right",
                 }}
               >
                 {row.value}
               </td>
             </tr>
-          ))}
+          )})}
         </tbody>
       </table>
     </div>

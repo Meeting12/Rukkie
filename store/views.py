@@ -318,9 +318,19 @@ def _send_order_created_notifications(order, contact_email=None):
                     first_image = item.product.images.first()
                     image_url = ''
                     if first_image and getattr(first_image, 'image', None):
-                        image_url = _resolve_image_url(getattr(first_image, 'image', None), request=None) or ''
+                        # Use storage URL first; fall back to serializer normalization for legacy values.
+                        try:
+                            storage_url = str(getattr(first_image.image, 'url', '') or '').strip()
+                        except Exception:
+                            storage_url = ''
+                        if storage_url and '<cloud_name>' not in storage_url.lower() and '%3ccloud_name%3e' not in storage_url.lower():
+                            image_url = storage_url
+                        if not image_url:
+                            image_url = _resolve_image_url(getattr(first_image, 'image', None), request=None) or ''
                         image_url = str(image_url).strip()
-                        if image_url.startswith('//'):
+                        if image_url.startswith('res.cloudinary.com/'):
+                            image_url = f'https://{image_url}'
+                        elif image_url.startswith('//'):
                             image_url = f'https:{image_url}'
                         elif image_url.startswith('/'):
                             image_url = f'{site_root}{image_url}'

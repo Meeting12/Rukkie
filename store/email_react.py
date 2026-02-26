@@ -123,18 +123,18 @@ def _card(rows):
         value = _text(value)
         if not value:
             continue
+        label_text = str(label)
+        is_total = label_text.strip().lower() == "total"
         items.append(
             f"""
             <tr>
-              <td style="padding:8px 0;color:#7A6E63;font-size:12px;font-weight:600;text-align:left;border-bottom:1px solid #E7DDD0;">{escape(str(label))}</td>
-              <td style="padding:8px 0;color:#3A2F28;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #E7DDD0;">{escape(value)}</td>
+              <td style="padding:8px 0;color:#7A6E63;font-size:12px;font-weight:{('700' if is_total else '600')};text-align:left;">{escape(label_text)}</td>
+              <td style="padding:8px 0;color:#3A2F28;font-size:13px;font-weight:{('700' if is_total else '600')};text-align:right;">{escape(value)}</td>
             </tr>
             """
         )
     if not items:
         return ""
-    if items:
-        items[-1] = items[-1].replace('border-bottom:1px solid #E7DDD0;', 'border-bottom:none;', 2)
     return (
         '<div style="background:#FBF8F2;border:1px solid #E7DDD0;border-radius:14px;padding:14px 16px;margin:16px 0 20px;">'
         '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">'
@@ -165,7 +165,7 @@ def _wrap_email(*, title, subtitle="", body_html="", site_name="De-Rukkies Colle
 <html>
 <body style="margin:0;padding:24px 12px;background:#F5EFE6;color:#3A2F28;font-family:Inter,Arial,sans-serif;">
   <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;border:1px solid #E7DDD0;box-shadow:0 12px 32px rgba(58,47,40,.08);">
-    <div style="background:linear-gradient(135deg,#2F2721,#493A2F);padding:24px 28px;">
+    <div style="background:linear-gradient(135deg,#2F2721,#493A2F);padding:24px 28px;text-align:center;">
       <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:.06em;color:#F2DDAB;">{escape(site_name)}</p>
     </div>
     <div style="padding:28px;line-height:1.55;">
@@ -173,7 +173,7 @@ def _wrap_email(*, title, subtitle="", body_html="", site_name="De-Rukkies Colle
       {f'<p style="margin:0 0 20px;color:#7A6E63;font-size:14px;">{escape(subtitle)}</p>' if subtitle else ''}
       {body_html}
     </div>
-    <div style="background:#2F2721;color:rgba(255,255,255,.82);padding:18px 28px 24px;border-top:1px solid rgba(255,255,255,.08);">
+    <div style="background:#2F2721;color:rgba(255,255,255,.82);padding:18px 28px 24px;border-top:1px solid rgba(255,255,255,.08);text-align:center;">
       <p style="margin:0;font-size:13px;">{escape(site_name)}</p>
       <p style="margin:8px 0 0;font-size:12px;color:rgba(255,255,255,.65);">© {year} {escape(site_name)}. All rights reserved.</p>
       {f'<p style="margin:8px 0 0;font-size:12px;color:rgba(255,255,255,.65);">Support: {escape(support_email)}</p>' if support_email else ''}
