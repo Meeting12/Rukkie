@@ -35,7 +35,7 @@ async function loadPayPalScript(clientId: string, currency: string) {
   const sdkUrl =
     `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}` +
     `&currency=${encodeURIComponent(currency)}` +
-    "&intent=capture&components=buttons&enable-funding=card&disable-funding=paylater,venmo,credit";
+    "&intent=capture&components=buttons";
 
   const existing = document.getElementById(PAYPAL_SDK_SCRIPT_ID);
   if (existing && window.paypal && (existing as HTMLScriptElement).src === sdkUrl) {
@@ -71,6 +71,7 @@ export function PayPalSmartButtons({
   const [renderingButtons, setRenderingButtons] = useState(false);
   const [message, setMessage] = useState("");
   const [cardEligible, setCardEligible] = useState(true);
+  const [walletFallbackShown, setWalletFallbackShown] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -86,6 +87,7 @@ export function PayPalSmartButtons({
     setMessage("");
     setSdkReady(false);
     setCardEligible(true);
+    setWalletFallbackShown(false);
 
     (async () => {
       try {
@@ -167,11 +169,36 @@ export function PayPalSmartButtons({
     };
 
     const renderButtons = async () => {
+      const renderGenericFallback = async (fallbackMessage: string) => {
+        try {
+          const genericButton = window.paypal!.Buttons({
+            ...sharedConfig,
+          });
+          if (genericButton?.isEligible()) {
+            await genericButton.render(`#${cardContainerId}`);
+            setWalletFallbackShown(true);
+            setMessage(fallbackMessage);
+            return true;
+          }
+        } catch {
+          // no-op: caller handles terminal message
+        }
+        return false;
+      };
+
       try {
         const cardFunding = window.paypal?.FUNDING?.CARD;
+        const paypalFunding = window.paypal?.FUNDING?.PAYPAL;
         if (!cardFunding) {
           setCardEligible(false);
-          setMessage("Card checkout is unavailable right now. Please try again shortly.");
+          if (
+            await renderGenericFallback(
+              "Card checkout is unavailable for this buyer profile. You can complete payment securely with PayPal."
+            )
+          ) {
+            return;
+          }
+          setMessage("Card checkout is unavailable right now. Please try another payment method.");
           return;
         }
         const fundingSources =
@@ -184,20 +211,42 @@ export function PayPalSmartButtons({
               ...sharedConfig,
               fundingSource: cardFunding,
             });
-              if (cardButton?.isEligible()) {
-                await cardButton.render(`#${cardContainerId}`);
-                setCardEligible(true);
-              } else {
-                setCardEligible(false);
-                setMessage("Card checkout is currently unavailable for this buyer profile or region.");
-              }
+            if (cardButton?.isEligible()) {
+              await cardButton.render(`#${cardContainerId}`);
+              setCardEligible(true);
+              setWalletFallbackShown(false);
             } else {
               setCardEligible(false);
+              if (
+                await renderGenericFallback(
+                  "Card checkout is currently unavailable for this buyer profile or region. You can continue with PayPal."
+                )
+              ) {
+                return;
+              }
               setMessage("Card checkout is currently unavailable for this buyer profile or region.");
             }
+          } else {
+            setCardEligible(false);
+            if (
+              await renderGenericFallback(
+                "Card checkout is currently unavailable for this buyer profile or region. You can continue with PayPal."
+              )
+            ) {
+              return;
+            }
+            setMessage("Card checkout is currently unavailable for this buyer profile or region.");
+          }
         } catch {
           setCardEligible(false);
-          setMessage("Unable to render card checkout. Please refresh and try again.");
+          if (
+            await renderGenericFallback(
+              "Card checkout could not be rendered. You can continue with PayPal."
+            )
+          ) {
+            return;
+          }
+          setMessage("Unable to render PayPal checkout. Please refresh and try again.");
         }
       } catch (err: any) {
         const msg = err?.message || "Failed to render PayPal buttons.";
@@ -216,12 +265,12 @@ export function PayPalSmartButtons({
   return (
     <div className="space-y-4 rounded-xl border border-border p-4">
       <div>
-        <p className="text-sm font-semibold text-foreground">Pay with Card (No PayPal account needed)</p>
+        <p className="text-sm font-semibold text-foreground">Pay with PayPal (Card when eligible)</p>
         <p className="text-xs text-muted-foreground mb-2">
-          Use debit or credit card securely through PayPal guest checkout.
+          Use debit or credit card via guest checkout where eligible, or continue with PayPal.
         </p>
         <div id={cardContainerId} className="min-h-10" />
-        {!loading && !renderingButtons && !cardEligible && (
+        {!loading && !renderingButtons && !cardEligible && !walletFallbackShown && (
           <p className="text-xs text-muted-foreground mt-2">
             Card checkout may be unavailable in this region or for this buyer profile.
           </p>
@@ -236,7 +285,11 @@ export function PayPalSmartButtons({
           Secure checkout powered by PayPal.
         </p>
       )}
-      {!!message && <p className="text-sm text-destructive">{message}</p>}
+      {!!message && (
+        <p className={walletFallbackShown ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
+          {message}
+        </p>
+      )}
     </div>
   );
 }

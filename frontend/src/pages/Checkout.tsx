@@ -380,9 +380,9 @@ const Checkout = () => {
                     <Label htmlFor="paypal" className="flex items-center gap-3 cursor-pointer flex-1">
                       <CreditCard className="h-5 w-5 text-primary" />
                       <div>
-                        <p className="font-medium">Pay with PayPal Card Checkout</p>
+                        <p className="font-medium">Pay with PayPal (Card + Wallet)</p>
                         <p className="text-sm text-muted-foreground">
-                          Card-only checkout via PayPal. No PayPal account needed where eligible.
+                          Guest card checkout where eligible, with automatic PayPal wallet fallback.
                         </p>
                       </div>
                     </Label>
@@ -404,7 +404,7 @@ const Checkout = () => {
                 <div className="mt-6 p-4 bg-secondary/50 rounded-lg">
                   <p className="text-sm text-muted-foreground text-center">
                     {paymentMethod === "paypal"
-                      ? "After creating your order, complete PayPal card checkout below."
+                      ? "After creating your order, complete payment with PayPal (card when eligible)."
                       : `You will be redirected to ${paymentMethod === "flutterwave" ? "Flutterwave" : "Stripe"} to complete payment securely.`}
                   </p>
                 </div>

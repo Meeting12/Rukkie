@@ -318,15 +318,8 @@ def _send_order_created_notifications(order, contact_email=None):
                     first_image = item.product.images.first()
                     image_url = ''
                     if first_image and getattr(first_image, 'image', None):
-                        # Use storage URL first; fall back to serializer normalization for legacy values.
-                        try:
-                            storage_url = str(getattr(first_image.image, 'url', '') or '').strip()
-                        except Exception:
-                            storage_url = ''
-                        if storage_url and '<cloud_name>' not in storage_url.lower() and '%3ccloud_name%3e' not in storage_url.lower():
-                            image_url = storage_url
-                        if not image_url:
-                            image_url = _resolve_image_url(getattr(first_image, 'image', None), request=None) or ''
+                        # Use the exact same image URL resolver path as cart/product serializers.
+                        image_url = _resolve_image_url(getattr(first_image, 'image', None), request=None) or ''
                         image_url = str(image_url).strip()
                         if image_url.startswith('res.cloudinary.com/'):
                             image_url = f'https://{image_url}'
@@ -334,10 +327,6 @@ def _send_order_created_notifications(order, contact_email=None):
                             image_url = f'https:{image_url}'
                         elif image_url.startswith('/'):
                             image_url = f'{site_root}{image_url}'
-                        # Email clients are inconsistent with modern formats like WebP/AVIF.
-                        # Prefer a JPEG Cloudinary transformation for transactional email thumbnails.
-                        if 'res.cloudinary.com/' in image_url and '/image/upload/' in image_url and '/f_jpg' not in image_url:
-                            image_url = image_url.replace('/image/upload/', '/image/upload/f_jpg,q_auto/', 1)
                     if image_url:
                         order_items_summary[-1]['imageUrl'] = image_url
                 except Exception:
@@ -1457,6 +1446,11 @@ def _paypal_config_issue():
     client_id, client_secret = _paypal_credentials()
     if not client_id or not client_secret:
         return 'Missing PAYPAL_CLIENT_ID or PAYPAL_CLIENT_SECRET.'
+    placeholder_markers = ('replace_me', 'your_', '<', 'changeme', 'example')
+    cid = client_id.lower()
+    csec = client_secret.lower()
+    if any(marker in cid for marker in placeholder_markers) or any(marker in csec for marker in placeholder_markers):
+        return 'PayPal credentials are placeholders. Set real PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.'
 
     if _paypal_mode() == 'live':
         if 'sandbox' in client_id.lower() or 'sandbox' in client_secret.lower():
@@ -2087,7 +2081,7 @@ def paypal_client_config(request):
             'env': _paypal_mode(),
             'currency': 'USD',
             'merchant_supports_cards': True,
-            'card_only_checkout': True,
+            'card_only_checkout': False,
         }
     )
 
