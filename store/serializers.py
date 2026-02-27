@@ -228,13 +228,6 @@ def _resolve_image_url(field_file, request=None) -> str:
                 or '%3ccloud_name%3e' in raw_lower
                 or 'your_cloud_name' in raw_lower
             )
-            if (
-                not needs_name_based_repair
-                and normalized_name.startswith('media/')
-                and '/image/upload/media/' not in raw_lower
-                and '/image/upload/v1/media/' not in raw_lower
-            ):
-                needs_name_based_repair = True
             if needs_name_based_repair:
                 return name_based_url
 
