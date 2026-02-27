@@ -12,7 +12,7 @@ from django.db.models import Count, Q, Avg
 from .serializers import (
     ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer,
     ShippingMethodSerializer, AddressSerializer, CategorySerializer, HomeHeroSlideSerializer, ProductReviewSerializer,
-    UserNotificationSerializer, UserMailboxMessageSerializer, _resolve_image_url,
+    UserNotificationSerializer, UserMailboxMessageSerializer, ProductImageSerializer, _resolve_image_url,
 )
 from django.db import transaction
 from decimal import Decimal, InvalidOperation
@@ -283,7 +283,7 @@ def _contact_recipient():
     return getattr(settings, 'CONTACT_RECIPIENT_EMAIL', '') or getattr(settings, 'DEFAULT_FROM_EMAIL', '')
 
 
-def _send_order_created_notifications(order, contact_email=None):
+def _send_order_created_notifications(order, contact_email=None, request=None):
     recipient_email = ''
     if order.user and order.user.email:
         recipient_email = order.user.email
@@ -291,7 +291,7 @@ def _send_order_created_notifications(order, contact_email=None):
         recipient_email = contact_email
 
     if recipient_email:
-        site_root = get_public_site_url()
+        site_root = get_public_site_url(request)
         shipping_text = ''
         tax_text = ''
         subtotal_text = ''
@@ -318,11 +318,19 @@ def _send_order_created_notifications(order, contact_email=None):
                     first_image = item.product.images.first()
                     image_url = ''
                     if first_image and getattr(first_image, 'image', None):
-                        # Use the exact same image URL resolver path as cart/product serializers.
-                        image_url = _resolve_image_url(getattr(first_image, 'image', None), request=None) or ''
+                        # Use the exact same serializer path as cart/storefront image payloads.
+                        try:
+                            serializer_context = {'request': request} if request is not None else {}
+                            image_url = str(
+                                ProductImageSerializer(first_image, context=serializer_context).data.get('image_url') or ''
+                            ).strip()
+                        except Exception:
+                            image_url = _resolve_image_url(getattr(first_image, 'image', None), request=request) or ''
                         image_url = str(image_url).strip()
                         if image_url.startswith('res.cloudinary.com/'):
                             image_url = f'https://{image_url}'
+                        elif image_url.startswith('http://'):
+                            image_url = f'https://{image_url[len("http://"):]}'
                         elif image_url.startswith('//'):
                             image_url = f'https:{image_url}'
                         elif image_url.startswith('/'):
@@ -1316,7 +1324,7 @@ def checkout_create(request):
         request.session.modified = True
 
     logger.info('checkout.create success order_id=%s order_number=%s cart_id=%s', order.id, order.order_number, cart.id)
-    _send_order_created_notifications(order, contact_email=contact_email)
+    _send_order_created_notifications(order, contact_email=contact_email, request=request)
     serializer = OrderSerializer(order, context={'request': request})
     return Response(serializer.data)
 
