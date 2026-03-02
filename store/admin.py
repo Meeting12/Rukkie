@@ -7,10 +7,10 @@ import re
 import tempfile
 import zipfile
 import time
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, urlencode
 import base64
 from django.http import HttpResponse
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.core.mail import send_mail
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -24,6 +24,7 @@ from django.contrib import messages
 from django.utils.html import format_html, format_html_join
 from django.utils.text import slugify
 from django.db.models import Count, Q
+from django.utils import timezone
 import logging
 import requests
 import uuid
@@ -38,6 +39,19 @@ from .email_react import get_public_site_url, render_react_email_html
 
 logger = logging.getLogger(__name__)
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg', '.avif'}
+FAILED_PAYMENT_STATUSES = {'failed', 'error', 'cancelled', 'canceled', 'declined', 'expired'}
+PENDING_PAYMENT_STATUSES = {'pending', 'initiated', 'created', 'processing'}
+
+
+def _admin_changelist_url(model, params=None):
+	url = reverse(f'admin:{model._meta.app_label}_{model._meta.model_name}_changelist')
+	if params:
+		return f'{url}?{urlencode(params)}'
+	return url
+
+
+def _admin_change_url(obj):
+	return reverse(f'admin:{obj._meta.app_label}_{obj._meta.model_name}_change', args=[obj.pk])
 
 
 def _extract_csv_image_sources(row):
@@ -691,11 +705,73 @@ class ProductAdminForm(forms.ModelForm):
 		return self._parse_list(self.cleaned_data.get('tags', ''))
 
 
+class ProductHasImagesFilter(admin.SimpleListFilter):
+	title = 'images'
+	parameter_name = 'has_images'
+
+	def lookups(self, request, model_admin):
+		return (
+			('missing', 'Missing images'),
+			('present', 'Has images'),
+		)
+
+	def queryset(self, request, queryset):
+		value = self.value()
+		if value not in {'missing', 'present'}:
+			return queryset
+		queryset = queryset.annotate(_image_count=Count('images', distinct=True))
+		if value == 'missing':
+			return queryset.filter(_image_count=0)
+		return queryset.filter(_image_count__gt=0)
+
+
+class OrderOpsStateFilter(admin.SimpleListFilter):
+	title = 'ops state'
+	parameter_name = 'ops_state'
+
+	def lookups(self, request, model_admin):
+		return (
+			('pending_paid', 'Pending with successful payment'),
+			('pending_no_txn', 'Pending with no transaction'),
+		)
+
+	def queryset(self, request, queryset):
+		value = self.value()
+		if value == 'pending_paid':
+			return queryset.filter(status=Order.STATUS_PENDING, transactions__success=True).distinct()
+		if value == 'pending_no_txn':
+			return queryset.filter(status=Order.STATUS_PENDING, transactions__isnull=True).distinct()
+		return queryset
+
+
+class PaymentOpsReviewFilter(admin.SimpleListFilter):
+	title = 'ops review'
+	parameter_name = 'ops_review'
+
+	def lookups(self, request, model_admin):
+		return (
+			('failed', 'Failed'),
+			('stalled', 'Stalled pending'),
+			('success_pending_order', 'Success on pending order'),
+		)
+
+	def queryset(self, request, queryset):
+		value = self.value()
+		stale_cutoff = timezone.now() - timedelta(minutes=30)
+		if value == 'failed':
+			return queryset.filter(Q(status__in=FAILED_PAYMENT_STATUSES) | Q(success=False, status__in=FAILED_PAYMENT_STATUSES))
+		if value == 'stalled':
+			return queryset.filter(success=False, order__status=Order.STATUS_PENDING, created_at__lt=stale_cutoff).exclude(status__in=FAILED_PAYMENT_STATUSES)
+		if value == 'success_pending_order':
+			return queryset.filter(success=True, order__status=Order.STATUS_PENDING)
+		return queryset
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
 	form = ProductAdminForm
 	list_display = ('name', 'slug', 'category_links', 'price', 'stock', 'is_featured', 'is_flash_sale', 'is_digital', 'is_active')
-	list_filter = ('is_active', 'is_featured', 'is_flash_sale', 'is_digital', 'categories')
+	list_filter = ('is_active', 'is_featured', 'is_flash_sale', 'is_digital', ProductHasImagesFilter, 'categories')
 	search_fields = ('name', 'slug', 'description')
 	inlines = [ProductImageInline]
 	prepopulated_fields = {'slug': ('name',)}
@@ -1073,11 +1149,39 @@ class OrderItemInline(admin.TabularInline):
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
 	list_display = ('order_number', 'user', 'status', 'total', 'created_at')
-	list_filter = ('status', 'created_at')
+	list_filter = ('status', OrderOpsStateFilter, 'created_at')
 	search_fields = ('order_number', 'user__username')
 	inlines = [OrderItemInline]
 	readonly_fields = ('created_at', 'updated_at')
-	actions = ('mark_as_processing', 'mark_as_shipped', 'export_as_csv')
+	actions = ('recover_paid_orders', 'mark_as_processing', 'mark_as_shipped', 'export_as_csv')
+
+	def recover_paid_orders(self, request, queryset):
+		from .views import _mark_order_paid_and_finalize, _send_order_paid_notifications
+
+		recovered = 0
+		already_paid = 0
+		skipped = 0
+		for order in queryset.prefetch_related('transactions'):
+			success_txn = order.transactions.filter(success=True).order_by('-updated_at', '-created_at').first()
+			if not success_txn:
+				skipped += 1
+				continue
+			became_paid = _mark_order_paid_and_finalize(
+				order,
+				provider=success_txn.provider or 'manual',
+				provider_txn_id=success_txn.provider_transaction_id or success_txn.paypal_order_id or '',
+			)
+			if became_paid:
+				recovered += 1
+				_send_order_paid_notifications(order, provider=success_txn.provider or 'manual')
+			else:
+				already_paid += 1
+		self.message_user(
+			request,
+			f"{recovered} order(s) recovered to paid, {already_paid} already finalized, {skipped} skipped with no successful transaction.",
+			level=messages.SUCCESS if recovered else messages.WARNING,
+		)
+	recover_paid_orders.short_description = "Recover selected orders with successful transactions"
 
 	def mark_as_processing(self, request, queryset):
 		updated = queryset.update(status=Order.STATUS_PROCESSING)
@@ -1159,13 +1263,46 @@ class PaymentTransactionAdmin(admin.ModelAdmin):
 		'id', 'order', 'user', 'provider', 'paypal_order_id', 'provider_transaction_id',
 		'status', 'amount', 'currency', 'payer_email', 'success', 'created_at', 'updated_at'
 	)
-	list_filter = ('provider', 'status', 'success', 'currency')
+	list_filter = ('provider', PaymentOpsReviewFilter, 'status', 'success', 'currency')
 	search_fields = ('provider_transaction_id', 'paypal_order_id', 'payer_email', 'order__order_number', 'order__id', 'user__username')
 	change_list_template = 'admin/store/paymenttransaction/change_list.html'
+	actions = ('recover_selected_success_transactions',)
+
+	def recover_selected_success_transactions(self, request, queryset):
+		from .views import _mark_order_paid_and_finalize, _send_order_paid_notifications
+
+		recovered = 0
+		already_paid = 0
+		skipped = 0
+		for txn in queryset.select_related('order'):
+			if not txn.success:
+				skipped += 1
+				continue
+			became_paid = _mark_order_paid_and_finalize(
+				txn.order,
+				provider=txn.provider or 'manual',
+				provider_txn_id=txn.provider_transaction_id or txn.paypal_order_id or '',
+			)
+			if became_paid:
+				recovered += 1
+				_send_order_paid_notifications(txn.order, provider=txn.provider or 'manual')
+			else:
+				already_paid += 1
+		self.message_user(
+			request,
+			f"{recovered} order(s) recovered to paid, {already_paid} already finalized, {skipped} skipped because transaction was not successful.",
+			level=messages.SUCCESS if recovered else messages.WARNING,
+		)
+	recover_selected_success_transactions.short_description = "Recover orders for selected successful transactions"
 
 	def get_urls(self):
 		urls = super().get_urls()
 		custom_urls = [
+			path(
+				'operations-dashboard/',
+				self.admin_site.admin_view(self.operations_dashboard_view),
+				name='store_paymenttransaction_operations_dashboard',
+			),
 			path(
 				'flutterwave-balance/',
 				self.admin_site.admin_view(self.flutterwave_balance_view),
@@ -1173,6 +1310,169 @@ class PaymentTransactionAdmin(admin.ModelAdmin):
 			),
 		]
 		return custom_urls + urls
+
+	def operations_dashboard_view(self, request):
+		if not self.has_view_permission(request):
+			return redirect('admin:login')
+
+		stale_cutoff = timezone.now() - timedelta(minutes=30)
+		pending_paid_orders_qs = (
+			Order.objects.filter(status=Order.STATUS_PENDING, transactions__success=True)
+			.select_related('user')
+			.distinct()
+			.order_by('-updated_at', '-created_at')
+		)
+		stalled_transactions_qs = (
+			PaymentTransaction.objects.filter(success=False, order__status=Order.STATUS_PENDING, created_at__lt=stale_cutoff)
+			.exclude(status__in=FAILED_PAYMENT_STATUSES)
+			.select_related('order', 'user')
+			.order_by('-updated_at', '-created_at')
+		)
+		failed_transactions_qs = (
+			PaymentTransaction.objects.filter(Q(status__in=FAILED_PAYMENT_STATUSES) | Q(success=False, status__in=FAILED_PAYMENT_STATUSES))
+			.select_related('order', 'user')
+			.order_by('-updated_at', '-created_at')
+		)
+		missing_image_products_qs = (
+			Product.objects.filter(is_active=True)
+			.annotate(image_count=Count('images', distinct=True))
+			.filter(image_count=0)
+			.order_by('-created_at', 'name')
+		)
+		unread_contacts_qs = ContactMessage.objects.filter(is_read=False).order_by('-created_at')
+		pending_metadata_qs = PendingMetadata.objects.filter(applied=False).select_related('product').order_by('-created_at')
+
+		def _order_row(order):
+			user_label = order.user.get_username() if getattr(order, 'user_id', None) else 'Guest'
+			return {
+				'label': order.order_number or f'Order #{order.pk}',
+				'meta': f'{user_label} · {order.total} · {order.created_at:%Y-%m-%d %H:%M}',
+				'status': order.status,
+				'url': _admin_change_url(order),
+			}
+
+		def _txn_row(txn):
+			order_number = getattr(txn.order, 'order_number', '') or f'Order #{txn.order_id}'
+			return {
+				'label': f'{txn.provider.upper()} · {order_number}',
+				'meta': f'{txn.status or "unknown"} · {txn.amount} {txn.currency} · {txn.created_at:%Y-%m-%d %H:%M}',
+				'status': 'success' if txn.success else 'needs review',
+				'url': _admin_change_url(txn),
+			}
+
+		def _product_row(product):
+			return {
+				'label': product.name,
+				'meta': f'Stock {product.stock} · {"Featured" if product.is_featured else "Standard"}',
+				'status': 'missing images',
+				'url': _admin_change_url(product),
+			}
+
+		def _contact_row(message):
+			return {
+				'label': message.subject or 'Contact message',
+				'meta': f'{message.full_name} · {message.email} · {message.created_at:%Y-%m-%d %H:%M}',
+				'status': 'unread',
+				'url': _admin_change_url(message),
+			}
+
+		def _metadata_row(row):
+			return {
+				'label': getattr(row.product, 'name', f'Product #{row.product_id}'),
+				'meta': f'Confidence {row.confidence:.2f} · {row.created_at:%Y-%m-%d %H:%M}',
+				'status': 'pending review',
+				'url': _admin_change_url(row),
+			}
+
+		context = {
+			**self.admin_site.each_context(request),
+			'title': 'Operations Dashboard',
+			'opts': self.model._meta,
+			'stale_minutes': 30,
+			'summary_cards': [
+				{
+					'label': 'Pending orders with successful payment',
+					'value': pending_paid_orders_qs.count(),
+					'url': _admin_changelist_url(Order, {'ops_state': 'pending_paid'}),
+				},
+				{
+					'label': 'Stalled pending transactions',
+					'value': stalled_transactions_qs.count(),
+					'url': _admin_changelist_url(PaymentTransaction, {'ops_review': 'stalled'}),
+				},
+				{
+					'label': 'Failed transactions',
+					'value': failed_transactions_qs.count(),
+					'url': _admin_changelist_url(PaymentTransaction, {'ops_review': 'failed'}),
+				},
+				{
+					'label': 'Active products missing images',
+					'value': missing_image_products_qs.count(),
+					'url': _admin_changelist_url(Product, {'has_images': 'missing'}),
+				},
+				{
+					'label': 'Unread contact messages',
+					'value': unread_contacts_qs.count(),
+					'url': _admin_changelist_url(ContactMessage, {'is_read__exact': 0}),
+				},
+				{
+					'label': 'Pending metadata reviews',
+					'value': pending_metadata_qs.count(),
+					'url': _admin_changelist_url(PendingMetadata, {'applied__exact': 0}),
+				},
+			],
+			'sections': [
+				{
+					'title': 'Pending Orders With Successful Payment',
+					'description': 'Orders still marked pending even though at least one successful transaction exists.',
+					'rows': [_order_row(order) for order in pending_paid_orders_qs[:10]],
+					'empty_text': 'No payment/order mismatches found.',
+					'view_all_url': _admin_changelist_url(Order, {'ops_state': 'pending_paid'}),
+				},
+				{
+					'title': 'Stalled Pending Transactions',
+					'description': 'Pending transactions older than 30 minutes that did not resolve to success or failure.',
+					'rows': [_txn_row(txn) for txn in stalled_transactions_qs[:10]],
+					'empty_text': 'No stalled pending transactions.',
+					'view_all_url': _admin_changelist_url(PaymentTransaction, {'ops_review': 'stalled'}),
+				},
+				{
+					'title': 'Failed Transactions',
+					'description': 'Transactions explicitly marked failed, declined, cancelled, or expired.',
+					'rows': [_txn_row(txn) for txn in failed_transactions_qs[:10]],
+					'empty_text': 'No failed transactions in the current dataset.',
+					'view_all_url': _admin_changelist_url(PaymentTransaction, {'ops_review': 'failed'}),
+				},
+				{
+					'title': 'Products Missing Images',
+					'description': 'Active products with zero attached product images.',
+					'rows': [_product_row(product) for product in missing_image_products_qs[:10]],
+					'empty_text': 'All active products currently have at least one image.',
+					'view_all_url': _admin_changelist_url(Product, {'has_images': 'missing'}),
+				},
+				{
+					'title': 'Unread Contact Messages',
+					'description': 'Customer contact messages waiting for review.',
+					'rows': [_contact_row(message) for message in unread_contacts_qs[:8]],
+					'empty_text': 'No unread contact messages.',
+					'view_all_url': _admin_changelist_url(ContactMessage, {'is_read__exact': 0}),
+				},
+				{
+					'title': 'Pending Metadata Reviews',
+					'description': 'Image metadata analyses that still require admin review or application.',
+					'rows': [_metadata_row(row) for row in pending_metadata_qs[:8]],
+					'empty_text': 'No pending metadata items.',
+					'view_all_url': _admin_changelist_url(PendingMetadata, {'applied__exact': 0}),
+				},
+			],
+			'quick_links': [
+				{'label': 'All orders', 'url': _admin_changelist_url(Order)},
+				{'label': 'All payment transactions', 'url': _admin_changelist_url(PaymentTransaction)},
+				{'label': 'Flutterwave balance', 'url': reverse('admin:store_paymenttransaction_flutterwave_balance')},
+				{'label': 'All products', 'url': _admin_changelist_url(Product)},
+			],
+		}
+		return TemplateResponse(request, 'admin/store/paymenttransaction/operations_dashboard.html', context)
 
 	def flutterwave_balance_view(self, request):
 		if not self.has_view_permission(request):

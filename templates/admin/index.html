@@ -14,6 +14,19 @@
     <tbody>
       <tr class="model-paymenttransaction">
         <th scope="row">
+          <a href="{% url 'admin:store_paymenttransaction_operations_dashboard' %}">
+            Operations Dashboard
+          </a>
+        </th>
+        <td>
+          Live ops view for payment mismatches, stalled transactions, missing product images, unread contacts, and pending metadata.
+        </td>
+        <td>
+          <a class="viewlink" href="{% url 'admin:store_paymenttransaction_operations_dashboard' %}">{% trans "View" %}</a>
+        </td>
+      </tr>
+      <tr class="model-paymenttransaction">
+        <th scope="row">
           <a href="{% url 'admin:store_paymenttransaction_flutterwave_balance' %}">
             Flutterwave Balance
           </a>

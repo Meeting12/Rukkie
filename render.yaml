@@ -117,6 +117,14 @@ services:
         sync: false
       - key: PAYMENT_VERIFY_TOKEN
         sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.0"
+      - key: SENTRY_PROFILES_SAMPLE_RATE
+        value: "0.0"
   - type: worker
     name: rukkie-worker
     env: python
@@ -210,6 +218,14 @@ services:
         sync: false
       - key: PAYMENT_VERIFY_TOKEN
         sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.0"
+      - key: SENTRY_PROFILES_SAMPLE_RATE
+        value: "0.0"
 
 databases:
   - name: rukkie-db

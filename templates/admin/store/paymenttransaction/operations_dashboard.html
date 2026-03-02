@@ -1,0 +1,189 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .ops-dashboard {
+    display: grid;
+    gap: 20px;
+  }
+  .ops-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .ops-card,
+  .ops-panel {
+    background: var(--body-bg, #fff);
+    border: 1px solid var(--hairline-color, #d6d6d6);
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+  }
+  .ops-card a,
+  .ops-panel a {
+    text-decoration: none;
+  }
+  .ops-card {
+    padding: 18px 20px;
+  }
+  .ops-card-label {
+    margin: 0 0 10px;
+    color: var(--body-quiet-color, #666);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .ops-card-value {
+    margin: 0;
+    color: var(--body-fg, #222);
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .ops-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .ops-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 9px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline-color, #d6d6d6);
+    background: var(--darkened-bg, #f7f7f7);
+    color: var(--link-fg, #417690);
+    font-weight: 600;
+  }
+  .ops-sections {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 18px;
+  }
+  .ops-panel {
+    padding: 18px 20px;
+  }
+  .ops-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .ops-panel-title {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.2;
+  }
+  .ops-panel-desc {
+    margin: 6px 0 0;
+    color: var(--body-quiet-color, #666);
+  }
+  .ops-row-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .ops-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--hairline-color, #ececec);
+  }
+  .ops-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .ops-row-label {
+    display: block;
+    color: var(--body-fg, #222);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .ops-row-meta {
+    color: var(--body-quiet-color, #666);
+    font-size: 12px;
+  }
+  .ops-status {
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--link-fg, #417690);
+  }
+  .ops-empty {
+    margin: 0;
+    color: var(--body-quiet-color, #666);
+  }
+  @media (max-width: 767px) {
+    .ops-sections {
+      grid-template-columns: 1fr;
+    }
+    .ops-row {
+      flex-direction: column;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:store_paymenttransaction_changelist' %}">Payment transactions</a>
+  &rsaquo; Operations Dashboard
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="ops-dashboard">
+  <div class="ops-summary">
+    {% for card in summary_cards %}
+    <div class="ops-card">
+      <a href="{{ card.url }}">
+        <p class="ops-card-label">{{ card.label }}</p>
+        <p class="ops-card-value">{{ card.value }}</p>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="ops-links">
+    {% for link in quick_links %}
+    <a class="ops-link" href="{{ link.url }}">{{ link.label }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="ops-sections">
+    {% for section in sections %}
+    <section class="ops-panel">
+      <div class="ops-panel-header">
+        <div>
+          <h2 class="ops-panel-title">{{ section.title }}</h2>
+          <p class="ops-panel-desc">{{ section.description }}</p>
+        </div>
+        <a class="ops-link" href="{{ section.view_all_url }}">View all</a>
+      </div>
+      {% if section.rows %}
+      <ul class="ops-row-list">
+        {% for row in section.rows %}
+        <li class="ops-row">
+          <div>
+            <a class="ops-row-label" href="{{ row.url }}">{{ row.label }}</a>
+            <span class="ops-row-meta">{{ row.meta }}</span>
+          </div>
+          <div class="ops-status">{{ row.status }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="ops-empty">{{ section.empty_text }}</p>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

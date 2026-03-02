@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv, dotenv_values
 from django.core.exceptions import ImproperlyConfigured
 import dj_database_url
+from .sentry import init_sentry
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,6 +41,9 @@ DEBUG = str(os.environ.get('DEBUG', 'True')).strip().lower() in ('1', 'true', 'y
 # Ensure a secret key is provided in non-debug (production) mode
 if not DEBUG and not SECRET_KEY:
     raise ImproperlyConfigured('SECRET_KEY environment variable is required when DEBUG=False')
+
+# Optional error monitoring. Only activates when SENTRY_DSN is configured.
+SENTRY_ENABLED = init_sentry(debug=DEBUG)
 
 # Accept Render domains and local hosts; allow override via env var
 if DEBUG:
