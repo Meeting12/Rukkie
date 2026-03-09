@@ -500,14 +500,14 @@ const Checkout = () => {
                   className="w-full"
                   type="submit"
                   disabled={isProcessing || (paymentMethod === "paypal" && checkoutOrderId !== null)}
+                  loading={isProcessing}
+                  loadingText="Processing order..."
                 >
-                  {isProcessing
-                    ? "Processing..."
-                    : paymentMethod === "paypal" && checkoutOrderId !== null
-                      ? "Order Created - Complete Card Payment"
-                      : paymentMethod === "paypal"
-                        ? `Create Order - $${total.toFixed(2)}`
-                        : `Pay $${total.toFixed(2)}`}
+                  {paymentMethod === "paypal" && checkoutOrderId !== null
+                    ? "Order Created - Complete Card Payment"
+                    : paymentMethod === "paypal"
+                      ? `Create Order - $${total.toFixed(2)}`
+                      : `Pay $${total.toFixed(2)}`}
                 </Button>
 
                 {/* Trust Badges */}

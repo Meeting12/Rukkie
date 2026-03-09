@@ -8,7 +8,7 @@ from .models import (
     ContactMessage, NewsletterSubscription, PaymentTransaction, HomeHeroSlide, Wishlist, ProductReview, AssistantPolicy,
     UserNotification, UserMailboxMessage, Page,
 )
-from django.db.models import Count, Q, Avg
+from django.db.models import Count, Q, Avg, Case, When, Value, IntegerField
 from .serializers import (
     ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer,
     ShippingMethodSerializer, AddressSerializer, CategorySerializer, HomeHeroSlideSerializer, ProductReviewSerializer,
@@ -505,10 +505,12 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ProductSerializer
 
     def get_queryset(self):
-        qs = Product.objects.filter(is_active=True)
+        qs = Product.objects.filter(is_active=True).prefetch_related('images', 'categories')
         params = self.request.query_params
         category_slug = params.get('category')
         featured = params.get('featured')
+        raw_query = str(params.get('q') or params.get('search') or '').strip()
+        limit_raw = params.get('limit')
         if category_slug:
             qs = qs.filter(categories__slug=category_slug)
         if featured is not None:
@@ -516,6 +518,41 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                 qs = qs.filter(is_featured=True)
             else:
                 qs = qs.filter(is_featured=False)
+        if raw_query:
+            normalized_query = re.sub(r'\s+', ' ', raw_query).strip()[:100]
+            terms = [term for term in normalized_query.split(' ') if term][:6]
+            for term in terms:
+                qs = qs.filter(
+                    Q(name__icontains=term)
+                    | Q(slug__icontains=term)
+                    | Q(description__icontains=term)
+                    | Q(categories__name__icontains=term)
+                    | Q(categories__slug__icontains=term)
+                )
+            qs = qs.annotate(
+                search_rank=Case(
+                    When(slug__iexact=normalized_query, then=Value(0)),
+                    When(name__iexact=normalized_query, then=Value(1)),
+                    When(name__istartswith=normalized_query, then=Value(2)),
+                    When(slug__istartswith=normalized_query, then=Value(3)),
+                    When(categories__name__iexact=normalized_query, then=Value(4)),
+                    When(categories__slug__iexact=normalized_query, then=Value(5)),
+                    When(name__icontains=normalized_query, then=Value(6)),
+                    When(categories__name__icontains=normalized_query, then=Value(7)),
+                    default=Value(8),
+                    output_field=IntegerField(),
+                )
+            ).order_by('search_rank', '-is_featured', '-created_at', 'id')
+        else:
+            qs = qs.order_by('-is_featured', '-created_at', 'id')
+        qs = qs.distinct()
+        if limit_raw not in (None, ''):
+            try:
+                limit = max(1, min(int(limit_raw), 24))
+            except Exception:
+                limit = 0
+            if limit:
+                return qs[:limit]
         return qs
 
 
@@ -2337,6 +2374,53 @@ def paypal_capture_order(request):
             'paypal_order_id': paypal_order_id,
         }
     )
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def paypal_update_state(request):
+    """
+    Record client-observed PayPal checkout states (failed/cancelled) for operations visibility.
+    """
+    if not _paypal_rate_limit_allow(
+        request,
+        bucket='paypal_state',
+        limit=60,
+        window_seconds=60,
+    ):
+        return Response({'error': 'rate_limited', 'detail': 'Too many PayPal attempts. Please try again shortly.'}, status=429)
+
+    order_id = request.data.get('order_id')
+    state = str(request.data.get('state') or '').strip().lower()
+    paypal_order_id = str(request.data.get('paypal_order_id') or '').strip()
+    provider_txn_id = str(request.data.get('provider_transaction_id') or paypal_order_id).strip()
+
+    if not order_id:
+        return Response({'error': 'order_id_required'}, status=400)
+    if state not in ('failed', 'cancelled'):
+        return Response({'error': 'invalid_state', 'detail': 'state must be failed or cancelled'}, status=400)
+
+    order = get_object_or_404(Order, id=order_id)
+    try:
+        _ensure_order_access(request, order)
+    except PermissionDenied as exc:
+        return Response({'error': 'forbidden', 'detail': str(exc)}, status=403)
+
+    if order.status in PAID_ORDER_STATUSES:
+        return Response({'ok': True, 'paid': True, 'status': order.status})
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    txn = _record_payment_attempt(
+        order=order,
+        provider='paypal',
+        provider_txn_id=provider_txn_id,
+        paypal_order_id=paypal_order_id,
+        amount=order.total,
+        status=state,
+        currency='USD',
+        raw_response={'event': f'client_{state}', 'payload': payload},
+    )
+    return Response({'ok': True, 'status': order.status, 'state': state, 'transaction_id': txn.id})
 
 
 @api_view(['POST'])

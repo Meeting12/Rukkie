@@ -78,6 +78,9 @@ const Account = () => {
   const location = useLocation();
   const { isAuthenticated, username, login, logout, lastError } = useAuth();
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const [registerSubmitting, setRegisterSubmitting] = useState(false);
+  const [addressSaving, setAddressSaving] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [registerForm, setRegisterForm] = useState({
     username: "",
@@ -202,11 +205,16 @@ const Account = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ok = await login(loginForm.username, loginForm.password);
-    if (ok) {
-      toast.success("Welcome back!");
-    } else {
-      toast.error(lastError || "Invalid credentials");
+    setLoginSubmitting(true);
+    try {
+      const ok = await login(loginForm.username, loginForm.password);
+      if (ok) {
+        toast.success("Welcome back!");
+      } else {
+        toast.error(lastError || "Invalid credentials");
+      }
+    } finally {
+      setLoginSubmitting(false);
     }
   };
 
@@ -223,6 +231,7 @@ const Account = () => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    setRegisterSubmitting(true);
     try {
       await fetchJSON("/api/auth/register/", {
         method: "POST",
@@ -239,6 +248,8 @@ const Account = () => {
       setAuthTab("login");
     } catch (err: any) {
       toast.error(parseApiErrorMessage(err?.message || "Registration failed"));
+    } finally {
+      setRegisterSubmitting(false);
     }
   };
 
@@ -303,7 +314,7 @@ const Account = () => {
                           Forgot password?
                         </Link>
                       </div>
-                      <Button type="submit" className="w-full">
+                      <Button type="submit" className="w-full" loading={loginSubmitting} loadingText="Signing in...">
                         Sign In
                       </Button>
                     </form>
@@ -375,7 +386,7 @@ const Account = () => {
                           required
                         />
                       </div>
-                              <Button type="submit" className="w-full">
+                              <Button type="submit" className="w-full" loading={registerSubmitting} loadingText="Creating account...">
                                 Create Account
                               </Button>
                     </form>
@@ -428,6 +439,7 @@ const Account = () => {
 
   const saveAddress = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAddressSaving(true);
     try {
       if (editingAddressId) {
         await fetchJSON(`/api/account/addresses/${editingAddressId}/`, {
@@ -446,6 +458,8 @@ const Account = () => {
       loadAddresses();
     } catch (err: any) {
       toast.error(err?.message || "Unable to save address.");
+    } finally {
+      setAddressSaving(false);
     }
   };
 
@@ -662,7 +676,13 @@ const Account = () => {
               />
             </div>
             <div className="flex gap-3">
-              <Button type="submit">{editingAddressId ? "Update Address" : "Save Address"}</Button>
+              <Button
+                type="submit"
+                loading={addressSaving}
+                loadingText={editingAddressId ? "Updating address..." : "Saving address..."}
+              >
+                {editingAddressId ? "Update Address" : "Save Address"}
+              </Button>
               {editingAddressId && (
                 <Button type="button" variant="outline" onClick={resetAddressForm}>
                   Cancel

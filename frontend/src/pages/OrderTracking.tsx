@@ -53,6 +53,7 @@ const mockOrderStatuses = [
 const OrderTracking = () => {
   const [orderNumber, setOrderNumber] = useState("");
   const [isTracking, setIsTracking] = useState(false);
+  const [hasTracked, setHasTracked] = useState(false);
   const [orderData, setOrderData] = useState<any | null>(null);
 
   const handleTrack = async (e: React.FormEvent) => {
@@ -62,8 +63,12 @@ const OrderTracking = () => {
     try {
       const resp = await axios.get('/api/orders/track/', { params: { order_number: orderNumber } });
       setOrderData(resp.data);
+      setHasTracked(true);
     } catch (err) {
       setOrderData(null);
+      setHasTracked(true);
+    } finally {
+      setIsTracking(false);
     }
   };
 
@@ -111,7 +116,7 @@ const OrderTracking = () => {
                     placeholder="Email used for the order"
                   />
                 </div>
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="w-full" loading={isTracking} loadingText="Tracking order...">
                   <Package className="h-4 w-4 mr-2" />
                   Track Order
                 </Button>
@@ -120,7 +125,7 @@ const OrderTracking = () => {
           </Card>
 
           {/* Tracking Results */}
-          {isTracking && (
+          {hasTracked && (
             <div className="space-y-6 animate-fade-in">
               <Card>
                 <CardHeader>

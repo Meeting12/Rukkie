@@ -381,30 +381,111 @@ const productBySlugCache = new Map<string, Product>();
 const productBySlugPromise = new Map<string, Promise<Product | undefined>>();
 const categoryProductsCache = new Map<string, Product[]>();
 const categoryProductsPromise = new Map<string, Promise<Product[]>>();
+const productListCache = new Map<string, Product[]>();
+const productListPromise = new Map<string, Promise<Product[]>>();
+
+type FetchProductsOptions = {
+  category?: string;
+  featured?: boolean;
+  search?: string;
+  limit?: number;
+};
+
+function buildProductListCacheKey(options?: FetchProductsOptions): string {
+  const params = new URLSearchParams();
+  if (options?.category) params.set("category", options.category);
+  if (typeof options?.featured === "boolean") params.set("featured", String(options.featured));
+  if (options?.search) params.set("q", options.search.trim());
+  if (typeof options?.limit === "number" && options.limit > 0) params.set("limit", String(options.limit));
+  const key = params.toString();
+  return key || "__all__";
+}
+
+function buildProductListUrl(options?: FetchProductsOptions): string {
+  const params = new URLSearchParams();
+  if (options?.category) params.set("category", options.category);
+  if (typeof options?.featured === "boolean") params.set("featured", String(options.featured));
+  if (options?.search && options.search.trim()) params.set("q", options.search.trim());
+  if (typeof options?.limit === "number" && options.limit > 0) params.set("limit", String(options.limit));
+  const query = params.toString();
+  return `/api/products/${query ? `?${query}` : ""}`;
+}
+
+function applyFallbackProductFilters(rows: Product[], options?: FetchProductsOptions): Product[] {
+  let result = [...rows];
+  if (options?.category) {
+    const key = normalizeCategoryKey(options.category);
+    result = result.filter((p) => normalizeCategoryKey(p.category) === key);
+  }
+  if (typeof options?.featured === "boolean") {
+    result = result.filter((p) => Boolean(p.isFeatured) === options.featured);
+  }
+  if (options?.search && options.search.trim()) {
+    const terms = options.search
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    result = result.filter((p) => {
+      const haystack = [
+        p.name,
+        p.slug,
+        p.description,
+        p.category,
+        ...(Array.isArray(p.features) ? p.features : []),
+        ...(Array.isArray(p.benefits) ? p.benefits : []),
+        ...(Array.isArray(p.tags) ? p.tags : []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
+  }
+  return result;
+}
 
 // API wrappers: attempt to fetch from backend; fall back to local data
-export async function fetchProducts(): Promise<Product[]> {
-  if (productsCache) return productsCache;
-  if (productsPromise) return productsPromise;
-
-  productsPromise = (async () => {
-  try {
-    const res = await fetch('/api/products/');
-    if (!res.ok) throw new Error('network');
-    const data = await res.json();
-    const items = Array.isArray(data) ? data : data.results || [];
-    const mapped = items.map((p: any) => mapBackendProduct(p));
-    productsCache = mapped;
-    return mapped;
-  } catch (e) {
-    productsCache = products;
-    return productsCache;
-  } finally {
-    productsPromise = null;
+export async function fetchProducts(options?: FetchProductsOptions): Promise<Product[]> {
+  const cacheKey = buildProductListCacheKey(options);
+  if (!options?.category && typeof options?.featured !== "boolean" && !options?.search) {
+    if (productsCache) return productsCache;
+    if (productsPromise) return productsPromise;
   }
+  if (productListCache.has(cacheKey)) return productListCache.get(cacheKey) || [];
+  if (productListPromise.has(cacheKey)) return productListPromise.get(cacheKey) || [];
+
+  const pending = (async () => {
+    try {
+      const res = await fetch(buildProductListUrl(options));
+      if (!res.ok) throw new Error('network');
+      const data = await res.json();
+      const items = Array.isArray(data) ? data : data.results || [];
+      const mapped = items.map((p: any) => mapBackendProduct(p));
+      productListCache.set(cacheKey, mapped);
+      if (!options?.category && typeof options?.featured !== "boolean" && !options?.search) {
+        productsCache = mapped;
+      }
+      return mapped;
+    } catch (e) {
+      const fallback = applyFallbackProductFilters(products, options);
+      productListCache.set(cacheKey, fallback);
+      if (!options?.category && typeof options?.featured !== "boolean" && !options?.search) {
+        productsCache = fallback;
+      }
+      return fallback;
+    } finally {
+      productListPromise.delete(cacheKey);
+      if (!options?.category && typeof options?.featured !== "boolean" && !options?.search) {
+        productsPromise = null;
+      }
+    }
   })();
 
-  return productsPromise;
+  productListPromise.set(cacheKey, pending);
+  if (!options?.category && typeof options?.featured !== "boolean" && !options?.search) {
+    productsPromise = pending;
+  }
+  return pending;
 }
 
 export async function fetchCategories(): Promise<Category[]> {
@@ -483,11 +564,7 @@ export async function fetchFeaturedProducts(): Promise<Product[]> {
 
   featuredProductsPromise = (async () => {
   try {
-    const res = await fetch('/api/products/?featured=true');
-    if (!res.ok) throw new Error('network');
-    const data = await res.json();
-    const items = Array.isArray(data) ? data : data.results || [];
-    featuredProductsCache = items.map((p: any) => mapBackendProduct(p));
+    featuredProductsCache = await fetchProducts({ featured: true });
     return featuredProductsCache;
   } catch (e) {
     featuredProductsCache = getFeaturedProducts();
@@ -533,11 +610,7 @@ export async function fetchProductsByCategory(slug: string): Promise<Product[]> 
 
   const pending = (async () => {
   try {
-    const res = await fetch(`/api/products/?category=${encodeURIComponent(slug)}`);
-    if (!res.ok) throw new Error('network');
-    const data = await res.json();
-    const items = Array.isArray(data) ? data : data.results || [];
-    const mapped = items.map((p: any) => mapBackendProduct(p));
+    const mapped = await fetchProducts({ category: slug });
     categoryProductsCache.set(slug, mapped);
     return mapped;
   } catch (e) {
@@ -567,4 +640,10 @@ export function prefetchCategoryProducts(slug: string) {
 export function prefetchProduct(slug: string) {
   if (!slug) return;
   void fetchProductBySlug(slug);
+}
+
+export async function fetchSearchSuggestions(query: string, limit = 6): Promise<Product[]> {
+  const cleaned = String(query || "").trim();
+  if (!cleaned) return [];
+  return fetchProducts({ search: cleaned, limit: Math.max(1, Math.min(limit, 12)) });
 }

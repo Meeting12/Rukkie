@@ -1,13 +1,13 @@
-import { useState, useMemo, useEffect } from "react";
+import { FormEvent, useState, useMemo, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { Filter, Grid, List, ChevronDown, X } from "lucide-react";
+import { Filter, Grid, List, ChevronDown, X, Search } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { ProductCard } from "@/components/products/ProductCard";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { fetchProducts, fetchCategories, fetchProductsByCategory } from "@/data/products";
+import { fetchProducts, fetchCategories } from "@/data/products";
 import { Category } from "@/types/product";
 import { cn } from "@/lib/utils";
 
@@ -30,12 +30,20 @@ const Products = () => {
   const [isGridView, setIsGridView] = useState(true);
   
   const selectedCategory = searchParams.get("category");
+  const selectedQuery = (searchParams.get("q") || "").trim();
   const selectedSort = searchParams.get("sort") || "newest";
   const selectedPriceRange = searchParams.get("price");
   const showSaleOnly = searchParams.get("sale") === "true";
+  const [searchInput, setSearchInput] = useState(selectedQuery);
+  const [isSearching, setIsSearching] = useState(false);
 
   const [products, setProducts] = useState([] as any[]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    setSearchInput(selectedQuery);
+    setIsSearching(false);
+  }, [selectedQuery]);
 
   useEffect(() => {
     let mounted = true;
@@ -47,9 +55,10 @@ const Products = () => {
     let mounted = true;
     const loadProducts = async () => {
       try {
-        const list = selectedCategory
-          ? await fetchProductsByCategory(selectedCategory)
-          : await fetchProducts();
+        const list = await fetchProducts({
+          category: selectedCategory || undefined,
+          search: selectedQuery || undefined,
+        });
         if (mounted) setProducts(Array.isArray(list) ? list : []);
       } catch {
         if (mounted) setProducts([]);
@@ -57,7 +66,7 @@ const Products = () => {
     };
     loadProducts();
     return () => { mounted = false; };
-  }, [selectedCategory]);
+  }, [selectedCategory, selectedQuery]);
 
   const filteredProducts = useMemo(() => {
     let result = [...products];
@@ -126,7 +135,20 @@ const Products = () => {
     setSearchParams({});
   };
 
-  const hasActiveFilters = selectedCategory || selectedPriceRange || showSaleOnly;
+  const hasActiveFilters = selectedCategory || selectedPriceRange || showSaleOnly || selectedQuery;
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSearching(true);
+    const newParams = new URLSearchParams(searchParams);
+    const nextQuery = searchInput.trim();
+    if (nextQuery) {
+      newParams.set("q", nextQuery);
+    } else {
+      newParams.delete("q");
+    }
+    setSearchParams(newParams);
+  };
 
   const FilterSidebar = ({ categoriesProp }: { categoriesProp?: Category[] }) => (
     <div className="space-y-8">
@@ -202,11 +224,18 @@ const Products = () => {
             )}
           </nav>
 
-          <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground">
-            {selectedCategory
-              ? `Shop ${selectedCategory.replace("-", " ").replace(/\b\w/g, (c) => c.toUpperCase())}`
-              : "All Products"}
+            <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground">
+            {selectedQuery
+              ? `Search Results for "${selectedQuery}"`
+              : selectedCategory
+                ? `Shop ${selectedCategory.replace("-", " ").replace(/\b\w/g, (c) => c.toUpperCase())}`
+                : "All Products"}
           </h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+            {selectedQuery
+              ? "Search by product name, category, slug, or description."
+              : "Browse the full catalog, filter by category, and narrow by price."}
+          </p>
         </div>
       </div>
 
@@ -219,10 +248,25 @@ const Products = () => {
 
           {/* Main Content */}
           <div className="flex-1">
+            <form onSubmit={handleSearchSubmit} className="mb-6 flex flex-col gap-3 sm:flex-row">
+              <div className="relative flex-1">
+                <Input
+                  type="search"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Search products, categories, or keywords"
+                  className="pr-12"
+                />
+                <Search className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              </div>
+              <Button type="submit" loading={isSearching} loadingText="Searching...">Search</Button>
+            </form>
+
             {/* Toolbar */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pb-4 border-b border-border">
               <p className="text-sm text-muted-foreground">
-                Showing {filteredProducts.length} products
+                Showing {filteredProducts.length} product{filteredProducts.length === 1 ? "" : "s"}
+                {selectedQuery ? ` for "${selectedQuery}"` : ""}
               </p>
 
               <div className="flex items-center gap-4">

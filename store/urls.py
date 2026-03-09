@@ -15,6 +15,7 @@ from .views import (
     paypal_client_config,
     paypal_create_order,
     paypal_capture_order,
+    paypal_update_state,
     storefront_theme,
     payment_verify_mark_paid,
     get_shipping_methods,
@@ -95,6 +96,7 @@ urlpatterns = [
     path('paypal/config/', paypal_client_config, name='paypal-config'),
     path('paypal/create-order/', paypal_create_order, name='paypal-create-order'),
     path('paypal/capture-order/', paypal_capture_order, name='paypal-capture-order'),
+    path('paypal/state/', paypal_update_state, name='paypal-update-state'),
     path('payments/verify/', payment_verify_mark_paid, name='payment-verify'),
     # Webhook endpoints (configure these URLs in provider dashboards)
     path('payments/webhook/stripe/', stripe_webhook, name='stripe-webhook'),

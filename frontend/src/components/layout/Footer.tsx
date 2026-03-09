@@ -95,8 +95,14 @@ export const Footer = () => {
                 className="bg-background/10 border-background/20 text-background placeholder:text-background/50 focus:border-primary"
                 required
               />
-              <Button type="submit" variant="hero" className="bg-primary hover:bg-primary/90" disabled={isSubscribing}>
-                {isSubscribing ? "Subscribing..." : "Subscribe"}
+              <Button
+                type="submit"
+                variant="hero"
+                className="bg-primary hover:bg-primary/90"
+                loading={isSubscribing}
+                loadingText="Subscribing..."
+              >
+                Subscribe
               </Button>
             </form>
           </div>

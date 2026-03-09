@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchJSON } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type PayPalSmartButtonsProps = {
   orderId: number;
@@ -14,13 +17,23 @@ type PayPalButtonInstance = {
   render: (selector: string) => Promise<void>;
 };
 
+type PayPalHostedFieldsInstance = {
+  submit: (options?: Record<string, any>) => Promise<void>;
+  teardown?: () => Promise<void>;
+};
+
+type PayPalHostedFieldsNamespace = {
+  isEligible: () => boolean;
+  render: (config: Record<string, any>) => Promise<PayPalHostedFieldsInstance>;
+};
+
 type PayPalNamespace = {
   FUNDING?: {
     PAYPAL?: string;
     CARD?: string;
   };
-  getFundingSources?: () => string[];
   Buttons: (config: Record<string, any>) => PayPalButtonInstance;
+  HostedFields?: PayPalHostedFieldsNamespace;
 };
 
 declare global {
@@ -31,15 +44,19 @@ declare global {
 
 const PAYPAL_SDK_SCRIPT_ID = "paypal-js-sdk";
 
-async function loadPayPalScript(clientId: string, currency: string) {
+type PayPalSdkLoadResult = {
+  hostedFieldsAvailable: boolean;
+};
+
+async function injectPayPalScript(clientId: string, currency: string, components: string) {
   const sdkUrl =
     `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}` +
     `&currency=${encodeURIComponent(currency)}` +
-    "&intent=capture&components=buttons";
+    `&intent=capture&components=${encodeURIComponent(components)}`;
 
   const existing = document.getElementById(PAYPAL_SDK_SCRIPT_ID);
   if (existing && window.paypal && (existing as HTMLScriptElement).src === sdkUrl) {
-    return;
+    return sdkUrl;
   }
   if (existing) {
     existing.remove();
@@ -55,6 +72,25 @@ async function loadPayPalScript(clientId: string, currency: string) {
     script.onerror = () => reject(new Error("Unable to load PayPal SDK."));
     document.body.appendChild(script);
   });
+
+  return sdkUrl;
+}
+
+async function loadPayPalScript(clientId: string, currency: string): Promise<PayPalSdkLoadResult> {
+  try {
+    await injectPayPalScript(clientId, currency, "buttons,hosted-fields");
+    if (!window.paypal?.Buttons) {
+      throw new Error("PayPal SDK loaded without Buttons.");
+    }
+    return { hostedFieldsAvailable: Boolean(window.paypal?.HostedFields) };
+  } catch {
+    // Fallback to wallet-only SDK if hosted fields path crashes in this buyer/browser profile.
+    await injectPayPalScript(clientId, currency, "buttons");
+    if (!window.paypal?.Buttons) {
+      throw new Error("Unable to initialize PayPal.");
+    }
+    return { hostedFieldsAvailable: false };
+  }
 }
 
 export function PayPalSmartButtons({
@@ -64,15 +100,72 @@ export function PayPalSmartButtons({
   onError,
   onCancel,
 }: PayPalSmartButtonsProps) {
-  const cardContainerId = useMemo(() => `pp-card-${orderId}`, [orderId]);
+  const [checkoutMode, setCheckoutMode] = useState<"card" | "paypal">("card");
   const [clientId, setClientId] = useState("");
   const [sdkReady, setSdkReady] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [renderingButtons, setRenderingButtons] = useState(false);
+  const [renderingWallet, setRenderingWallet] = useState(false);
+  const [renderingCardFields, setRenderingCardFields] = useState(false);
+  const [cardSubmitting, setCardSubmitting] = useState(false);
+  const [redirectingWallet, setRedirectingWallet] = useState(false);
+  const [redirectingCard, setRedirectingCard] = useState(false);
+  const [cardEligible, setCardEligible] = useState(false);
+  const [walletEligible, setWalletEligible] = useState(false);
+  const [hostedFieldsAvailable, setHostedFieldsAvailable] = useState(false);
+  const [cardholderName, setCardholderName] = useState("");
   const [message, setMessage] = useState("");
-  const [cardEligible, setCardEligible] = useState(true);
-  const [walletFallbackShown, setWalletFallbackShown] = useState(false);
   const mountedRef = useRef(true);
+  const hostedFieldsRef = useRef<PayPalHostedFieldsInstance | null>(null);
+
+  const walletContainerId = useMemo(() => `pp-wallet-${orderId}`, [orderId]);
+  const cardNumberId = useMemo(() => `pp-card-number-${orderId}`, [orderId]);
+  const cardExpiryId = useMemo(() => `pp-card-expiry-${orderId}`, [orderId]);
+  const cardCvvId = useMemo(() => `pp-card-cvv-${orderId}`, [orderId]);
+
+  const recordClientState = useCallback(async (state: "failed" | "cancelled", paypalOrderId = "") => {
+    try {
+      await fetchJSON("/api/paypal/state/", {
+        method: "POST",
+        body: JSON.stringify({
+          order_id: orderId,
+          paypal_order_id: paypalOrderId,
+          state,
+        }),
+      });
+    } catch {
+      // Keep checkout stable even if state logging fails.
+    }
+  }, [orderId]);
+
+  const createOrder = useCallback(async () => {
+    const response = await fetchJSON("/api/paypal/create-order/", {
+      method: "POST",
+      body: JSON.stringify({
+        order_id: orderId,
+        currency,
+      }),
+    });
+    const createdOrderId = String(response?.orderID || "").trim();
+    if (!createdOrderId) {
+      throw new Error("Unable to create PayPal order.");
+    }
+    return createdOrderId;
+  }, [currency, orderId]);
+
+  const handleApprove = useCallback(async (data: any) => {
+    const approvedOrderId = String(data?.orderID || "").trim();
+    if (!approvedOrderId) {
+      throw new Error("Missing PayPal order ID.");
+    }
+    const captureResponse = await fetchJSON("/api/paypal/capture-order/", {
+      method: "POST",
+      body: JSON.stringify({
+        order_id: orderId,
+        paypal_order_id: approvedOrderId,
+      }),
+    });
+    await onSuccess(captureResponse);
+  }, [onSuccess, orderId]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -86,8 +179,10 @@ export function PayPalSmartButtons({
     setLoading(true);
     setMessage("");
     setSdkReady(false);
-    setCardEligible(true);
-    setWalletFallbackShown(false);
+    setCardEligible(false);
+    setWalletEligible(false);
+    setHostedFieldsAvailable(false);
+    setCheckoutMode("card");
 
     (async () => {
       try {
@@ -99,8 +194,9 @@ export function PayPalSmartButtons({
         }
         if (!active || !mountedRef.current) return;
         setClientId(backendClientId);
-        await loadPayPalScript(backendClientId, backendCurrency);
+        const sdkResult = await loadPayPalScript(backendClientId, backendCurrency);
         if (!active || !mountedRef.current) return;
+        setHostedFieldsAvailable(sdkResult.hostedFieldsAvailable);
         setSdkReady(true);
       } catch (err: any) {
         if (!active || !mountedRef.current) return;
@@ -121,174 +217,322 @@ export function PayPalSmartButtons({
 
   useEffect(() => {
     if (!sdkReady || !window.paypal) return;
-    setRenderingButtons(true);
-    setMessage("");
+    setRenderingWallet(true);
+    const walletRoot = document.getElementById(walletContainerId);
+    if (walletRoot) walletRoot.innerHTML = "";
 
-    const cardRoot = document.getElementById(cardContainerId);
-    if (cardRoot) cardRoot.innerHTML = "";
-
-    const sharedConfig = {
-      style: { shape: "rect", layout: "vertical", label: "pay" },
-      createOrder: async () => {
-        const response = await fetchJSON("/api/paypal/create-order/", {
-          method: "POST",
-          body: JSON.stringify({
-            order_id: orderId,
-            currency,
-          }),
-        });
-        const createdOrderId = String(response?.orderID || "").trim();
-        if (!createdOrderId) {
-          throw new Error("Unable to create PayPal order.");
-        }
-        return createdOrderId;
-      },
-      onApprove: async (data: any) => {
-        const approvedOrderId = String(data?.orderID || "").trim();
-        if (!approvedOrderId) {
-          throw new Error("Missing PayPal order ID.");
-        }
-        const captureResponse = await fetchJSON("/api/paypal/capture-order/", {
-          method: "POST",
-          body: JSON.stringify({
-            order_id: orderId,
-            paypal_order_id: approvedOrderId,
-          }),
-        });
-        await onSuccess(captureResponse);
-      },
-      onCancel: () => {
-        setMessage("Payment was cancelled. You can try again.");
-        onCancel?.();
-      },
-      onError: (err: any) => {
-        const msg = err?.message || "PayPal payment failed.";
-        setMessage(msg);
-        onError?.(msg);
-      },
-    };
-
-    const renderButtons = async () => {
-      const renderGenericFallback = async (fallbackMessage: string) => {
-        try {
-          const genericButton = window.paypal!.Buttons({
-            ...sharedConfig,
-          });
-          if (genericButton?.isEligible()) {
-            await genericButton.render(`#${cardContainerId}`);
-            setWalletFallbackShown(true);
-            setMessage(fallbackMessage);
-            return true;
-          }
-        } catch {
-          // no-op: caller handles terminal message
-        }
-        return false;
-      };
-
+    const renderWallet = async () => {
       try {
-        const cardFunding = window.paypal?.FUNDING?.CARD;
-        const paypalFunding = window.paypal?.FUNDING?.PAYPAL;
-        if (!cardFunding) {
-          setCardEligible(false);
-          if (
-            await renderGenericFallback(
-              "Card checkout is unavailable for this buyer profile. You can complete payment securely with PayPal."
-            )
-          ) {
-            return;
-          }
-          setMessage("Card checkout is unavailable right now. Please try another payment method.");
+        const walletConfig: Record<string, any> = {
+          style: { shape: "rect", layout: "vertical", label: "paypal" },
+          createOrder,
+          onApprove: handleApprove,
+          onCancel: async () => {
+            setMessage("Payment was cancelled. You can try again.");
+            await recordClientState("cancelled");
+            onCancel?.();
+          },
+          onError: async (err: any) => {
+            const msg = err?.message || "PayPal payment failed.";
+            setMessage(msg);
+            await recordClientState("failed");
+            onError?.(msg);
+          },
+        };
+
+        const walletFunding = window.paypal?.FUNDING?.PAYPAL;
+        if (walletFunding) {
+          walletConfig.fundingSource = walletFunding;
+        }
+
+        const walletButton = window.paypal!.Buttons(walletConfig);
+
+        if (walletButton?.isEligible()) {
+          await walletButton.render(`#${walletContainerId}`);
+          setWalletEligible(true);
           return;
         }
-        const fundingSources =
-          typeof window.paypal?.getFundingSources === "function" ? window.paypal.getFundingSources() : [];
-        const supportsCardFunding = Array.isArray(fundingSources) && fundingSources.includes(cardFunding);
-
-        try {
-          if (supportsCardFunding) {
-            const cardButton = window.paypal!.Buttons({
-              ...sharedConfig,
-              fundingSource: cardFunding,
-            });
-            if (cardButton?.isEligible()) {
-              await cardButton.render(`#${cardContainerId}`);
-              setCardEligible(true);
-              setWalletFallbackShown(false);
-            } else {
-              setCardEligible(false);
-              if (
-                await renderGenericFallback(
-                  "Card checkout is currently unavailable for this buyer profile or region. You can continue with PayPal."
-                )
-              ) {
-                return;
-              }
-              setMessage("Card checkout is currently unavailable for this buyer profile or region.");
-            }
-          } else {
-            setCardEligible(false);
-            if (
-              await renderGenericFallback(
-                "Card checkout is currently unavailable for this buyer profile or region. You can continue with PayPal."
-              )
-            ) {
-              return;
-            }
-            setMessage("Card checkout is currently unavailable for this buyer profile or region.");
-          }
-        } catch {
-          setCardEligible(false);
-          if (
-            await renderGenericFallback(
-              "Card checkout could not be rendered. You can continue with PayPal."
-            )
-          ) {
-            return;
-          }
-          setMessage("Unable to render PayPal checkout. Please refresh and try again.");
-        }
+        setWalletEligible(false);
       } catch (err: any) {
-        const msg = err?.message || "Failed to render PayPal buttons.";
+        const msg = err?.message || "Unable to render PayPal wallet.";
         setMessage(msg);
         onError?.(msg);
+        setWalletEligible(false);
       } finally {
-        if (mountedRef.current) {
-          setRenderingButtons(false);
-        }
+        if (mountedRef.current) setRenderingWallet(false);
       }
     };
 
-    renderButtons();
-  }, [cardContainerId, currency, onCancel, onError, onSuccess, orderId, sdkReady]);
+    renderWallet();
+  }, [createOrder, handleApprove, onCancel, onError, recordClientState, sdkReady, walletContainerId]);
+
+  useEffect(() => {
+    let active = true;
+
+    const renderHostedFields = async () => {
+      if (!sdkReady || !hostedFieldsAvailable || !window.paypal?.HostedFields) {
+        setCardEligible(false);
+        return;
+      }
+      if (!window.paypal.HostedFields.isEligible()) {
+        setCardEligible(false);
+        return;
+      }
+
+      if (hostedFieldsRef.current?.teardown) {
+        try {
+          await hostedFieldsRef.current.teardown();
+        } catch {
+          // Ignore teardown errors.
+        }
+      }
+      hostedFieldsRef.current = null;
+
+      const numberRoot = document.getElementById(cardNumberId);
+      const expiryRoot = document.getElementById(cardExpiryId);
+      const cvvRoot = document.getElementById(cardCvvId);
+      if (numberRoot) numberRoot.innerHTML = "";
+      if (expiryRoot) expiryRoot.innerHTML = "";
+      if (cvvRoot) cvvRoot.innerHTML = "";
+
+      setRenderingCardFields(true);
+      try {
+        const hostedFields = await window.paypal.HostedFields.render({
+          createOrder,
+          onApprove: handleApprove,
+          onError: async (err: any) => {
+            const msg = err?.message || "Card payment failed.";
+            setMessage(msg);
+            await recordClientState("failed");
+            onError?.(msg);
+          },
+          styles: {
+            input: {
+              "font-size": "16px",
+              "font-family": "inherit",
+              color: "#0f172a",
+            },
+            ".invalid": {
+              color: "#dc2626",
+            },
+          },
+          fields: {
+            number: { selector: `#${cardNumberId}`, placeholder: "4111 1111 1111 1111" },
+            cvv: { selector: `#${cardCvvId}`, placeholder: "123" },
+            expirationDate: { selector: `#${cardExpiryId}`, placeholder: "MM/YY" },
+          },
+        });
+
+        if (!active || !mountedRef.current) return;
+        hostedFieldsRef.current = hostedFields;
+        setCardEligible(true);
+      } catch (err: any) {
+        if (!active || !mountedRef.current) return;
+        setCardEligible(false);
+        const msg = err?.message || "Card fields are unavailable for this buyer profile or region.";
+        setMessage(msg);
+      } finally {
+        if (active && mountedRef.current) setRenderingCardFields(false);
+      }
+    };
+
+    renderHostedFields();
+
+    return () => {
+      active = false;
+    };
+  }, [cardCvvId, cardExpiryId, cardNumberId, createOrder, handleApprove, hostedFieldsAvailable, onError, recordClientState, sdkReady]);
+
+  useEffect(() => {
+    return () => {
+      if (hostedFieldsRef.current?.teardown) {
+        hostedFieldsRef.current.teardown().catch(() => {});
+      }
+    };
+  }, []);
+
+  const handleSubmitCard = async () => {
+    if (!hostedFieldsRef.current) {
+      setMessage("Card fields are not ready. Try PayPal wallet.");
+      return;
+    }
+    if (!cardholderName.trim()) {
+      setMessage("Cardholder name is required.");
+      return;
+    }
+
+    setCardSubmitting(true);
+    setMessage("");
+    try {
+      await hostedFieldsRef.current.submit({
+        cardholderName: cardholderName.trim(),
+      });
+    } catch (err: any) {
+      const msg = err?.message || "Card payment failed.";
+      setMessage(msg);
+      await recordClientState("failed");
+      onError?.(msg);
+    } finally {
+      setCardSubmitting(false);
+    }
+  };
+
+  const openPayPalRedirect = useCallback(async (checkoutOption: "paypal" | "card") => {
+    if (checkoutOption === "card") {
+      setRedirectingCard(true);
+    } else {
+      setRedirectingWallet(true);
+    }
+    try {
+      const origin = window.location.origin;
+      const response = await fetchJSON("/api/payments/paypal/create/", {
+        method: "POST",
+        body: JSON.stringify({
+          order_id: orderId,
+          return_url: `${origin}/order/success/`,
+          cancel_url: `${origin}/checkout?payment=cancelled&provider=paypal`,
+          checkout_option: checkoutOption,
+        }),
+      });
+      const approvalUrl = String(response?.approval_url || "").trim();
+      if (!approvalUrl) {
+        throw new Error("Unable to open PayPal checkout right now.");
+      }
+      window.location.href = approvalUrl;
+    } catch (err: any) {
+      const msg = err?.message || "Unable to open PayPal checkout right now.";
+      setMessage(msg);
+      onError?.(msg);
+    } finally {
+      setRedirectingWallet(false);
+      setRedirectingCard(false);
+    }
+  }, [onError, orderId]);
+
+  const handleWalletRedirectFallback = useCallback(async () => {
+    await openPayPalRedirect("paypal");
+  }, [openPayPalRedirect]);
+
+  const handleCardRedirectFallback = useCallback(async () => {
+    await openPayPalRedirect("card");
+  }, [openPayPalRedirect]);
 
   return (
     <div className="space-y-4 rounded-xl border border-border p-4">
       <div>
-        <p className="text-sm font-semibold text-foreground">Pay with PayPal (Card when eligible)</p>
-        <p className="text-xs text-muted-foreground mb-2">
-          Use debit or credit card via guest checkout where eligible, or continue with PayPal.
+        <p className="text-sm font-semibold text-foreground">Pay with Card or PayPal</p>
+        <p className="text-xs text-muted-foreground">
+          Card fields require PayPal guest card eligibility for the current region/profile.
         </p>
-        <div id={cardContainerId} className="min-h-10" />
-        {!loading && !renderingButtons && !cardEligible && !walletFallbackShown && (
-          <p className="text-xs text-muted-foreground mt-2">
-            Card checkout may be unavailable in this region or for this buyer profile.
-          </p>
-        )}
       </div>
 
-      {(loading || renderingButtons) && (
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          variant={checkoutMode === "card" ? "default" : "outline"}
+          onClick={() => setCheckoutMode("card")}
+        >
+          Pay with Card
+        </Button>
+        <Button
+          type="button"
+          variant={checkoutMode === "paypal" ? "default" : "outline"}
+          onClick={() => setCheckoutMode("paypal")}
+        >
+          Pay with PayPal
+        </Button>
+      </div>
+
+      {(loading || renderingWallet || renderingCardFields) && (
         <p className="text-xs text-muted-foreground">Loading secure PayPal checkout...</p>
       )}
-      {!!clientId && !loading && (
-        <p className="text-[11px] text-muted-foreground">
-          Secure checkout powered by PayPal.
-        </p>
+
+      {checkoutMode === "card" && (
+        <div className="space-y-3">
+          {cardEligible ? (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor={`paypal-cardholder-${orderId}`}>Cardholder Name</Label>
+                <Input
+                  id={`paypal-cardholder-${orderId}`}
+                  value={cardholderName}
+                  onChange={(event) => setCardholderName(event.target.value)}
+                  placeholder="Name on card"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Card Number</Label>
+                <div id={cardNumberId} className="h-10 rounded-md border border-input bg-background px-3 py-2" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Expiry</Label>
+                  <div id={cardExpiryId} className="h-10 rounded-md border border-input bg-background px-3 py-2" />
+                </div>
+                <div className="space-y-2">
+                  <Label>CVV</Label>
+                  <div id={cardCvvId} className="h-10 rounded-md border border-input bg-background px-3 py-2" />
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                className="w-full"
+                onClick={handleSubmitCard}
+                loading={cardSubmitting}
+                loadingText="Processing card payment..."
+              >
+                Pay with Card
+              </Button>
+            </>
+          ) : (
+            <div className="space-y-2 rounded-md border border-border p-3">
+              <p className="text-sm text-muted-foreground">
+                Card checkout is unavailable for this buyer profile or region.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                loading={redirectingCard}
+                loadingText="Redirecting to PayPal..."
+                onClick={handleCardRedirectFallback}
+              >
+                Continue with Card on PayPal
+              </Button>
+              <Button type="button" variant="ghost" className="w-full" onClick={() => setCheckoutMode("paypal")}>
+                Use PayPal Wallet Instead
+              </Button>
+            </div>
+          )}
+        </div>
       )}
+
+      {checkoutMode === "paypal" && (
+        <div className="space-y-2">
+          <div id={walletContainerId} className="min-h-10" />
+          {!loading && !renderingWallet && !walletEligible && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              loading={redirectingWallet}
+              loadingText="Redirecting to PayPal..."
+              onClick={handleWalletRedirectFallback}
+            >
+              Continue with PayPal Wallet
+            </Button>
+          )}
+        </div>
+      )}
+
+      {!!clientId && !loading && (
+        <p className="text-[11px] text-muted-foreground">Secure checkout powered by PayPal.</p>
+      )}
+
       {!!message && (
-        <p className={walletFallbackShown ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>
-          {message}
-        </p>
+        <p className="text-sm text-muted-foreground">{message}</p>
       )}
     </div>
   );

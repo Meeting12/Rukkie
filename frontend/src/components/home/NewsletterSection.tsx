@@ -103,17 +103,14 @@ export const NewsletterSection = () => {
                     <Button 
                       variant="hero" 
                       type="submit" 
-                      disabled={isLoading}
+                      loading={isLoading}
+                      loadingText="Subscribing..."
                       className="h-14 px-8 rounded-xl group"
                     >
-                      {isLoading ? (
-                        "Subscribing..."
-                      ) : (
-                        <>
-                          Subscribe
-                          <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                        </>
-                      )}
+                      <>
+                        Subscribe
+                        <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                      </>
                     </Button>
                   </form>
                 </ScrollAnimation>

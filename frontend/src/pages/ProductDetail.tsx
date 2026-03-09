@@ -619,8 +619,8 @@ const ProductDetail = () => {
                     />
                   </div>
 
-                  <Button variant="outline" type="submit" disabled={submittingReview}>
-                    {submittingReview ? "Submitting..." : "Write a Review"}
+                  <Button variant="outline" type="submit" loading={submittingReview} loadingText="Submitting...">
+                    Write a Review
                   </Button>
                 </form>
               </div>
