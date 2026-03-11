@@ -45,60 +45,26 @@ export function getCloudinaryRetryCandidates(src: string): string[] {
     candidates.push(next);
   };
 
-  const variants = [base];
-  const folders = ["products", "categories", "hero"];
+  // Keep retries intentionally conservative to avoid noisy 404 storms.
+  // Most live failures are truly missing public IDs; aggressive extension/folder
+  // guessing produces hundreds of failed requests with no recovery benefit.
+  const variants = new Set<string>();
   const uploadParts = splitUploadUrl(base);
+  if (!uploadParts) return [];
 
-  for (const folder of folders) {
-    variants.push(base.replace(`/image/upload/${folder}/`, `/image/upload/v1/${folder}/`));
-    variants.push(base.replace(`/image/upload/v1/${folder}/`, `/image/upload/${folder}/`));
-    variants.push(base.replace(`/image/upload/${folder}/`, `/image/upload/media/${folder}/`));
-    variants.push(base.replace(`/image/upload/media/${folder}/`, `/image/upload/${folder}/`));
-    variants.push(base.replace(`/image/upload/v1/${folder}/`, `/image/upload/v1/media/${folder}/`));
-    variants.push(base.replace(`/image/upload/v1/media/${folder}/`, `/image/upload/v1/${folder}/`));
-  }
+  const tail = stripKnownCloudinaryPrefixes(uploadParts.tail);
+  if (!tail) return [];
 
-  if (uploadParts) {
-    const tailVariants = new Set<string>();
-    const wrappers = ["", "v1/", "media/", "v1/media/"];
-    const rawTail = uploadParts.tail;
-    const normalizedTail = stripKnownCloudinaryPrefixes(rawTail);
-    tailVariants.add(rawTail);
-    tailVariants.add(normalizedTail);
-
-    let publicId = normalizedTail;
-    const hasKnownFolder = folders.some((folder) => normalizedTail.toLowerCase().startsWith(`${folder}/`));
-    if (hasKnownFolder) {
-      publicId = normalizedTail.split("/").slice(1).join("/");
-      if (publicId) tailVariants.add(publicId);
-    }
-
-    if (publicId) {
-      for (const folder of folders) {
-        tailVariants.add(`${folder}/${publicId}`);
-      }
-    }
-
-    for (const wrapper of wrappers) {
-      for (const tail of tailVariants) {
-        if (!tail) continue;
-        variants.push(`${uploadParts.prefix}${wrapper}${tail}`);
-      }
-    }
-  }
+  const normalizedTail = tail.replace(/^media\//i, "");
+  variants.add(`${uploadParts.prefix}${normalizedTail}`);
+  variants.add(`${uploadParts.prefix}v1/media/${normalizedTail}`);
+  variants.add(`${uploadParts.prefix}media/${normalizedTail}`);
 
   for (const variant of variants) {
     add(variant);
-    const lastPart = (variant.split("/").pop() || "").toLowerCase();
-    const hasExt = /\.[a-z0-9]{2,5}$/i.test(lastPart);
-    if (!hasExt) {
-      add(`${variant}.jpg`);
-      add(`${variant}.png`);
-      add(`${variant}.webp`);
-    }
   }
 
-  return candidates;
+  return candidates.slice(0, 2);
 }
 
 export function advanceImageFallback(target: HTMLImageElement, fallbackSrc: string): void {
