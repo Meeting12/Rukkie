@@ -15,3 +15,4 @@ requests
 stripe
 sentry-sdk[django]
 whitenoise
+packaging>=24.2
