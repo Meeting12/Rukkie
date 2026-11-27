@@ -21,8 +21,17 @@ export default defineConfig(({ mode }) => ({
     outDir: 'build',
     assetsDir: 'assets',
     rollupOptions: {
+      input: {
+        index: path.resolve(__dirname, 'index.html'),
+        paymentLinkPage: path.resolve(__dirname, 'src/paymentLinkPage.tsx'),
+        paymentLinksAdmin: path.resolve(__dirname, 'src/PaymentLinkAdmin.tsx'),
+      },
       output: {
-        entryFileNames: 'assets/index.js',
+        entryFileNames: ({ name }) => {
+          if (name === 'paymentLinkPage') return 'assets/payment-link-page.js';
+          if (name === 'paymentLinksAdmin') return 'assets/payment-links-admin.js';
+          return 'assets/index.js';
+        },
         chunkFileNames: 'assets/chunk-[name]-[hash].js',
         assetFileNames: (assetInfo) => {
           if (assetInfo.name === 'index.css') {

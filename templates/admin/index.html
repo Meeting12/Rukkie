@@ -1,7 +1,16 @@
 {% extends "admin/index.html" %}
 {% load i18n %}
 
+{% block extrahead %}
+{{ block.super }}
+{% if perms.store.add_paymentlink %}{% include "admin/store/paymentlink/assets.html" %}{% endif %}
+{% endblock %}
+
 {% block content %}
+{% if perms.store.add_paymentlink %}
+  <div class="payment-links-dashboard">{% include "admin/store/paymentlink/generate_button.html" %}</div>
+  <div data-payment-link-tools></div>
+{% endif %}
 {{ block.super }}
 
 <div class="app-store module">

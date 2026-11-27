@@ -16,3 +16,4 @@ stripe
 sentry-sdk[django]
 whitenoise
 packaging>=24.2
+redis>=5.2.0

@@ -360,6 +360,12 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', '').strip() or EMAIL_HOST_USER or 'no-reply@derukkies.com'
 CONTACT_RECIPIENT_EMAIL = os.environ.get('CONTACT_RECIPIENT_EMAIL', DEFAULT_FROM_EMAIL)
 
+PAYMENT_LINK_ORIGIN = os.environ.get('PAYMENT_LINK_ORIGIN', 'https://rukkies.com').strip().rstrip('/')
+PAYMENT_LINK_SIGNING_KEY = os.environ.get('PAYMENT_LINK_SIGNING_KEY', '').strip()
+PAYMENT_LINK_STRIPE_WEBHOOK_SECRET = os.environ.get('PAYMENT_LINK_STRIPE_WEBHOOK_SECRET', '').strip()
+PAYMENT_LINK_FLUTTERWAVE_WEBHOOK_SECRET = os.environ.get('PAYMENT_LINK_FLUTTERWAVE_WEBHOOK_SECRET', '').strip()
+PAYMENT_LINK_ADMIN_EMAIL = os.environ.get('PAYMENT_LINK_ADMIN_EMAIL', '').strip() or CONTACT_RECIPIENT_EMAIL
+
 # Payment provider secrets (set via environment in Render)
 STRIPE_SECRET_KEY = _env_first(
     'STRIPE_SECRET_KEY',
@@ -468,6 +474,9 @@ REST_FRAMEWORK = {
 # Celery / background task settings
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
+CELERY_BEAT_SCHEDULE = {
+    'maintain-payment-links': {'task': 'store.tasks.maintain_payment_links', 'schedule': 120.0},
+}
 
 # Image metadata auto-apply confidence threshold (0.0 - 1.0)
 STORE_AUTO_APPLY_CONFIDENCE = float(os.environ.get('STORE_AUTO_APPLY_CONFIDENCE', '0.85'))
@@ -480,6 +489,9 @@ STORE_USE_EXTERNAL_VISION = _env_bool('STORE_USE_EXTERNAL_VISION', False)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'filters': {
+        'omit_payment_link_path': {'()': 'Rukkie.security_headers.OmitPaymentLinkPath'},
+    },
     'formatters': {
         'standard': {
             'format': '%(asctime)s | %(levelname)s | %(name)s | %(message)s',
@@ -490,6 +502,7 @@ LOGGING = {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'standard',
+            'filters': ['omit_payment_link_path'],
         },
     },
     'root': {

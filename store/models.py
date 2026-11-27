@@ -206,9 +206,105 @@ class OrderItem(models.Model):
 		return f"{self.quantity} x {self.product.name}"
 
 
+class PaymentLink(models.Model):
+	class Gateway(models.TextChoices):
+		STRIPE = 'stripe', 'Stripe'
+		FLUTTERWAVE = 'flutterwave', 'Flutterwave'
+
+	class Status(models.TextChoices):
+		PENDING = 'pending', 'Pending'
+		PROCESSING = 'processing', 'Processing'
+		PAID = 'paid', 'Paid'
+		FAILED = 'failed', 'Failed'
+		EXPIRED = 'expired', 'Expired'
+		REVOKED = 'revoked', 'Revoked'
+
+	reference = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+	customer_name = models.CharField(max_length=160)
+	customer_email = models.EmailField()
+	amount = models.DecimalField(max_digits=10, decimal_places=2)
+	currency = models.CharField(max_length=3)
+	description = models.CharField(max_length=240)
+	gateway = models.CharField(max_length=16, choices=Gateway.choices)
+	status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
+	expires_at = models.DateTimeField(db_index=True)
+	created_at = models.DateTimeField(auto_now_add=True)
+	paid_at = models.DateTimeField(null=True, blank=True)
+	order_reference = models.CharField(max_length=64, blank=True)
+	created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='created_payment_links')
+
+	class Meta:
+		ordering = ('-created_at', '-pk')
+		verbose_name_plural = 'Payment Links'
+		constraints = [
+			models.CheckConstraint(condition=models.Q(amount__gt=0), name='payment_link_positive_amount'),
+			models.CheckConstraint(
+				condition=models.Q(status='paid', paid_at__isnull=False) | (~models.Q(status='paid') & models.Q(paid_at__isnull=True)),
+				name='payment_link_valid_paid_timestamp',
+			),
+		]
+
+	def __str__(self):
+		return self.reference.hex
+
+
+class PaymentLinkAttempt(models.Model):
+	class Status(models.TextChoices):
+		ACTIVE = 'active', 'Active'
+		FAILED = 'failed', 'Failed'
+		PAID = 'paid', 'Paid'
+
+	link = models.ForeignKey(PaymentLink, on_delete=models.PROTECT, related_name='attempts')
+	reference = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+	status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE)
+	checkout_url = models.URLField(max_length=2048, blank=True)
+	provider_session = models.CharField(max_length=255, blank=True)
+	expires_at = models.DateTimeField()
+	created_at = models.DateTimeField(auto_now_add=True)
+	last_checked_at = models.DateTimeField(null=True, blank=True)
+
+	class Meta:
+		constraints = [
+			models.UniqueConstraint(fields=('link',), condition=models.Q(status='active'), name='payment_link_single_active_attempt'),
+			models.UniqueConstraint(fields=('link',), condition=models.Q(status='paid'), name='payment_link_single_paid_attempt'),
+		]
+
+
+class PaymentLinkAudit(models.Model):
+	link = models.ForeignKey(PaymentLink, on_delete=models.PROTECT, related_name='audit')
+	actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+	action = models.CharField(max_length=40)
+	created_at = models.DateTimeField(auto_now_add=True)
+
+	class Meta:
+		ordering = ('-created_at', '-pk')
+
+
+class PaymentLinkThrottle(models.Model):
+	key = models.CharField(max_length=64, primary_key=True)
+	window_start = models.DateTimeField()
+	hits = models.PositiveIntegerField(default=0)
+
+
+class PaymentLinkNotice(models.Model):
+	link = models.ForeignKey(PaymentLink, on_delete=models.PROTECT)
+	kind = models.CharField(max_length=24)
+	recipient = models.EmailField()
+	created_at = models.DateTimeField(auto_now_add=True)
+	claimed_at = models.DateTimeField(null=True, blank=True)
+	sent_at = models.DateTimeField(null=True, blank=True)
+	cancelled_at = models.DateTimeField(null=True, blank=True)
+
+	class Meta:
+		constraints = [
+			models.UniqueConstraint(fields=('link', 'kind'), condition=~models.Q(kind='invitation'), name='payment_link_unique_paid_notice'),
+		]
+
+
 class PaymentTransaction(models.Model):
 	user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='payment_transactions')
-	order = models.ForeignKey(Order, related_name='transactions', on_delete=models.CASCADE)
+	order = models.ForeignKey(Order, related_name='transactions', on_delete=models.CASCADE, null=True, blank=True)
+	payment_link = models.ForeignKey(PaymentLink, related_name='transactions', on_delete=models.PROTECT, null=True, blank=True)
 	provider = models.CharField(max_length=50)
 	paypal_order_id = models.CharField(max_length=64, blank=True, db_index=True)
 	provider_transaction_id = models.CharField(max_length=255, blank=True)
@@ -221,7 +317,22 @@ class PaymentTransaction(models.Model):
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True, null=True)
 
+	class Meta:
+		constraints = [
+			models.CheckConstraint(
+				condition=models.Q(order__isnull=False, payment_link__isnull=True) | models.Q(order__isnull=True, payment_link__isnull=False),
+				name='payment_transaction_one_source',
+			),
+			models.UniqueConstraint(fields=('payment_link',), condition=models.Q(success=True), name='payment_link_unique_success'),
+			models.UniqueConstraint(
+				fields=('provider', 'provider_transaction_id'), condition=models.Q(payment_link__isnull=False),
+				name='payment_link_unique_provider_transaction',
+			),
+		]
+
 	def __str__(self):
+		if self.payment_link_id:
+			return f'{self.provider} payment-link transaction ({self.status})'
 		return f"{self.provider} txn for order {self.order_id} ({self.status})"
 
 

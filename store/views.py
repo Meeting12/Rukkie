@@ -437,7 +437,7 @@ def _send_order_paid_notifications(order, provider='unknown'):
         payment_method = provider
         transaction_id = ''
         if latest_txn:
-            transaction_id = (latest_txn.provider_txn_id or '').strip()
+            transaction_id = (latest_txn.provider_transaction_id or '').strip()
             payment_method = latest_txn.provider or provider
             try:
                 payment_date = timezone.localtime(latest_txn.created_at).strftime('%Y-%m-%d %H:%M:%S %Z')
@@ -1825,7 +1825,10 @@ def stripe_confirm_checkout_session(request):
         logger.exception('stripe.confirm_session unexpected_error order_id=%s session_id=%s', order.id, session_id)
         return Response({'error': 'stripe_error', 'detail': str(e)}, status=400)
 
-    metadata = getattr(session, 'metadata', {}) or {}
+    from .payment_link_gateways import stripe_payload
+    metadata = stripe_payload(getattr(session, 'metadata', {}) or {})
+    if metadata.get('payment_link_attempt'):
+        return Response({'error': 'order_mismatch'}, status=400)
     session_order_id = str(metadata.get('order_id') or '')
     if session_order_id and str(session_order_id) != str(order.id):
         logger.warning('stripe.confirm_session mismatch order_id=%s metadata_order_id=%s', order.id, session_order_id)
@@ -2067,6 +2070,8 @@ def flutterwave_confirm_payment(request):
         return Response({'ok': True, 'paid': False, 'status': order.status, 'payment_status': payment_status})
 
     effective_tx_ref = str(fw_data.get('tx_ref') or tx_ref or '').strip()
+    if effective_tx_ref.startswith('pl-'):
+        return Response({'error': 'order_mismatch'}, status=400)
     meta_order_id = str((fw_data.get('meta') or {}).get('order_id') or '').strip()
     tx_ref_match = re.match(r'^order-(\d+)', effective_tx_ref)
     tx_ref_order_id = tx_ref_match.group(1) if tx_ref_match else ''
@@ -2753,6 +2758,10 @@ def payment_verify_mark_paid(request):
     if not provider:
         logger.warning('payment.verify failed order_id=%s reason=missing_provider', order.id)
         return Response({'error': 'provider_required'}, status=400)
+    if provider_txn_id and PaymentTransaction.objects.filter(
+        provider=provider, provider_transaction_id=provider_txn_id, payment_link__isnull=False,
+    ).exists():
+        return Response({'error': 'order_mismatch'}, status=400)
     if not _order_is_payable(order) and order.status != Order.STATUS_PAID:
         logger.warning('payment.verify blocked order_id=%s reason=order_not_payable status=%s', order.id, order.status)
         return Response({'error': 'order_not_payable', 'detail': f'Order status is {order.status}'}, status=409)
@@ -2773,7 +2782,9 @@ def payment_verify_mark_paid(request):
         return Response({'error': 'amount_mismatch'}, status=400)
 
     if provider_txn_id:
-        existing = PaymentTransaction.objects.filter(provider_transaction_id=provider_txn_id, provider=provider).first()
+        existing = PaymentTransaction.objects.filter(
+            provider_transaction_id=provider_txn_id, provider=provider, payment_link__isnull=True,
+        ).first()
         if existing:
             if existing.success:
                 logger.info('payment.verify duplicate order_id=%s provider=%s txn_id=%s', order.id, provider, provider_txn_id)
@@ -2832,7 +2843,9 @@ def _record_transaction(
         effective_paypal_order_id = effective_txn_id
 
     if provider_txn_id:
-        existing = PaymentTransaction.objects.filter(provider_transaction_id=provider_txn_id, provider=provider).first()
+        existing = PaymentTransaction.objects.filter(
+            provider_transaction_id=provider_txn_id, provider=provider, payment_link__isnull=True,
+        ).first()
         if existing:
             if existing.success:
                 return existing, getattr(order, 'status', None) not in PAID_ORDER_STATUSES
@@ -2959,7 +2972,8 @@ def stripe_webhook(request):
         logger.error('stripe.webhook misconfigured reason=missing_webhook_secret mode=LIVE')
         return Response({'error': 'stripe_webhook_not_configured'}, status=500)
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret) if webhook_secret else json.loads(payload)
+        from .payment_link_gateways import stripe_payload
+        event = stripe_payload(stripe.Webhook.construct_event(payload, sig_header, webhook_secret)) if webhook_secret else json.loads(payload)
     except Exception:
         logger.exception('Invalid Stripe webhook')
         return Response({'error': 'invalid_signature'}, status=400)
@@ -2967,6 +2981,8 @@ def stripe_webhook(request):
     # Handle relevant event types
     evtype = event.get('type')
     data = event.get('data', {}).get('object', {})
+    if (data.get('metadata') or {}).get('payment_link_attempt'):
+        return Response({'ok': True})
     if evtype == 'payment_intent.succeeded' or evtype == 'checkout.session.completed':
         # Try to get order id from metadata
         order_id = None
@@ -3040,6 +3056,18 @@ def stripe_webhook(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def flutterwave_webhook(request):
+    payload = request.body
+    # A Flutterwave account can send both checkout types to the same webhook.
+    # The payment-link handler verifies the signature before making any changes.
+    try:
+        transaction_data = json.loads(payload).get('data') or {}
+        is_payment_link = str(transaction_data.get('tx_ref') or '').startswith('pl-')
+    except (ValueError, AttributeError):
+        is_payment_link = False
+    if is_payment_link:
+        from .payment_link_views import flutterwave_webhook as payment_link_webhook
+        return payment_link_webhook(request._request)
+
     # Verify using verif-hash header.
     # Flutterwave typically sends a static secret hash in header;
     # we also support legacy HMAC style for backward compatibility.
@@ -3049,7 +3077,6 @@ def flutterwave_webhook(request):
         logger.error('flutterwave.webhook misconfigured reason=missing_webhook_secret mode=LIVE')
         return Response({'error': 'flutterwave_webhook_not_configured'}, status=500)
     signature = request.META.get('HTTP_VERIF_HASH')
-    payload = request.body
     try:
         if secret:
             sig = (signature or '').strip()

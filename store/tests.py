@@ -676,6 +676,9 @@ class StripePaymentConfigTests(TestCase):
 			id='cs_test_123',
 			payment_status='paid',
 			amount_total=1000,
+			currency='usd',
+			customer_details=None,
+			customer_email=None,
 			metadata={'order_id': str(self.order.id)},
 			payment_intent='pi_test_123',
 		)

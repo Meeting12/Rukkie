@@ -1,5 +1,8 @@
 from celery import shared_task
+from datetime import timedelta
 from django.conf import settings
+from django.db.models import Q
+from django.utils import timezone
 from .models import ProductImage, PendingMetadata
 from .utils.image_meta import generate_product_json_from_image
 from decimal import Decimal, ROUND_HALF_UP
@@ -46,3 +49,51 @@ def analyze_and_apply_image(self, product_image_id: int):
         applied = True
 
     return {'status': 'ok', 'applied': applied, 'confidence': confidence}
+
+
+@shared_task(bind=True, max_retries=4, ignore_result=True)
+def deliver_payment_link_notice(self, notice_id):
+    from .models import PaymentLink, PaymentLinkNotice
+    from .payment_link_mail import send_payment_link_notice
+    from .payment_links import audit, display_status
+
+    now = timezone.now()
+    queue = PaymentLinkNotice.objects.filter(pk=notice_id, sent_at__isnull=True, cancelled_at__isnull=True)
+    if not queue.filter(Q(claimed_at__isnull=True) | Q(claimed_at__lt=now - timedelta(minutes=10))).update(claimed_at=now):
+        return
+    notice = queue.select_related('link').get()
+    if notice.kind == 'invitation' and display_status(notice.link) not in (PaymentLink.Status.PENDING, PaymentLink.Status.FAILED):
+        queue.update(cancelled_at=timezone.now())
+        return
+    try:
+        if send_payment_link_notice(notice) != 1:
+            raise RuntimeError('Mail backend returned no delivery.')
+    except Exception:
+        queue.update(claimed_at=None)
+        raise self.retry(countdown=60 * (self.request.retries + 1), exc=RuntimeError('Payment link email delivery failed.')) from None
+    queue.update(sent_at=timezone.now())
+    audit(notice.link, f'{notice.kind}_sent')
+
+
+@shared_task(ignore_result=True)
+def maintain_payment_links():
+    from .models import PaymentLinkAttempt, PaymentLinkNotice, PaymentLinkThrottle
+    from .payment_link_gateways import GatewayError
+    from .payment_links import reconcile
+
+    now = timezone.now()
+    notices = PaymentLinkNotice.objects.filter(
+        sent_at__isnull=True, cancelled_at__isnull=True, created_at__gte=now - timedelta(days=7),
+    ).filter(Q(claimed_at__isnull=True) | Q(claimed_at__lt=now - timedelta(minutes=10))).order_by('created_at')
+    for notice_id in notices.values_list('pk', flat=True)[:100]:
+        deliver_payment_link_notice.delay(notice_id)
+
+    attempts = PaymentLinkAttempt.objects.select_related('link').filter(status='active').filter(
+        Q(last_checked_at__isnull=True) | Q(last_checked_at__lt=now - timedelta(minutes=2)),
+    ).order_by('last_checked_at', 'pk')
+    for attempt in attempts[:20]:
+        try:
+            reconcile(attempt)
+        except GatewayError:
+            continue
+    PaymentLinkThrottle.objects.filter(window_start__lt=now - timedelta(days=1)).delete()

@@ -1,0 +1,51 @@
+{% extends "admin/base_site.html" %}
+{% block extrahead %}{{ block.super }}{% include "admin/store/paymentlink/assets.html" %}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+  <a href="{% url 'admin:store_paymentlink_changelist' %}">Payment Links</a> &rsaquo; {{ link.reference }}</div>
+{% endblock %}
+{% block content %}
+<div class="payment-links-details">
+  <dl class="payment-links-summary">
+    <div><dt>Reference</dt><dd>{{ link.reference }}</dd></div>
+    <div><dt>Customer</dt><dd>{{ link.customer_name }}<br>{{ link.customer_email }}</dd></div>
+    <div><dt>Payment</dt><dd>{{ link.currency }} {{ link.amount }} · {{ link.get_gateway_display }}</dd></div>
+    <div><dt>Status</dt><dd><span class="payment-links-badge" data-status="{{ link.display_status }}">{{ link.display_status|capfirst }}</span></dd></div>
+    <div><dt>Expires</dt><dd>{{ link.expires_at|date:"DATETIME_FORMAT" }}</dd></div>
+    {% if link.order_reference %}<div><dt>Order reference</dt><dd>{{ link.order_reference }}</dd></div>{% endif %}
+  </dl>
+  <p>{{ link.description }}</p>
+  <div class="payment-links-toolbar">
+    {% if url %}
+      <button class="button" data-payment-link-action="copy" data-url="{{ url }}">Copy payment link</button>
+      <a class="button" href="{{ url }}?preview=1" target="_blank" rel="noopener noreferrer">Preview payment page</a>
+    {% endif %}
+    {% if can_manage %}
+      <button class="button" data-payment-link-action="send" data-reference="{{ link.reference }}">Send or resend</button>
+      <button class="button deletelink" data-payment-link-action="revoke" data-reference="{{ link.reference }}">Revoke</button>
+    {% endif %}
+    {% if receipt_url %}<a class="button" href="{{ receipt_url }}">Download receipt</a>{% endif %}
+  </div>
+  <div data-payment-link-tools></div>
+  <h2>Transactions</h2>
+  <div class="payment-links-table"><table>
+    <thead><tr><th>Provider reference</th><th>Amount</th><th>Status</th><th>Recorded</th></tr></thead>
+    <tbody>
+    {% for txn in transactions %}<tr><td>{{ txn.provider_transaction_id }}</td><td>{{ txn.currency }} {{ txn.amount }}</td><td>{{ txn.status|capfirst }}</td><td>{{ txn.created_at }}</td></tr>
+    {% empty %}<tr><td colspan="4">No completed transactions.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <h2>Checkout attempts</h2>
+  <div class="payment-links-table"><table>
+    <thead><tr><th>Reference</th><th>Provider reference</th><th>Status</th><th>Started</th><th>Expires</th></tr></thead>
+    <tbody>
+    {% for attempt in attempts %}<tr><td>{{ attempt.reference }}</td><td>{{ attempt.provider_session|default:"—" }}</td><td>{{ attempt.get_status_display }}</td><td>{{ attempt.created_at }}</td><td>{{ attempt.expires_at }}</td></tr>
+    {% empty %}<tr><td colspan="5">No checkout attempts.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <h2>Audit trail</h2>
+  <ul>
+    {% for entry in audit_entries %}<li>{{ entry.created_at }} · {{ entry.action }} · {{ entry.actor|default:"System" }}</li>{% endfor %}
+  </ul>
+</div>
+{% endblock %}

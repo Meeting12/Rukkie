@@ -44,10 +44,12 @@ export const ProductCard = ({ product }: ProductCardProps) => {
   return (
     <div
       className="product-card group"
-      onMouseEnter={() => setIsHovered(true)}
+      onMouseEnter={() => {
+        setIsHovered(true);
+        prefetchProduct(product.slug);
+      }}
       onMouseLeave={() => setIsHovered(false)}
       onFocusCapture={() => prefetchProduct(product.slug)}
-      onMouseEnterCapture={() => prefetchProduct(product.slug)}
       onTouchStart={() => prefetchProduct(product.slug)}
     >
       <Link to={`/product/${product.slug}`} state={{ prefetchedProduct: product }}>

@@ -20,13 +20,17 @@ from django.conf.urls.static import static
 from django.urls import path, include, re_path
 from django.views.generic import TemplateView
 from django.views.generic.base import RedirectView
+from store.payment_link_views import payment_page
 import os
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     # redirect bare /admin to /admin/ so Django's admin path is matched
     path('admin', RedirectView.as_view(url='/admin/')),
+    path('api/payment-links/', include('store.payment_link_urls')),
     path('api/', include('store.urls')),
+    path('pay/return', payment_page, name='payment-link-return'),
+    path('pay/<str:token>', payment_page, name='payment-link-page'),
     # Serve the SPA entry point for the root
     path('', TemplateView.as_view(template_name='index.html'), name='home'),
 ]

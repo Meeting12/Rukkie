@@ -4,7 +4,7 @@ from gunicorn.glogging import Logger
 
 
 class IgnoreHealthCheckLogger(Logger):
-    """Skip noisy access logs for health probes while keeping normal logs."""
+    """Omit health probes and URLs that contain payment-link credentials."""
 
     def access(self, resp, req, environ, request_time):  # type: ignore[override]
         path = ""
@@ -12,6 +12,6 @@ class IgnoreHealthCheckLogger(Logger):
             path = str((environ or {}).get("RAW_URI") or (environ or {}).get("PATH_INFO") or "")
         except Exception:
             path = ""
-        if path.startswith("/api/health/"):
+        if path.startswith(("/api/health/", "/pay/")):
             return
         return super().access(resp, req, environ, request_time)

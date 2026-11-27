@@ -1,3 +1,12 @@
+import logging
+
+
+class OmitPaymentLinkPath(logging.Filter):
+    def filter(self, record):
+        path = getattr(getattr(record, 'request', None), 'path', '')
+        return not path.startswith('/pay/')
+
+
 class SecurityHeadersMiddleware:
     """Add common security headers: Referrer-Policy, Permissions-Policy, X-Content-Type-Options.
 
@@ -9,6 +18,10 @@ class SecurityHeadersMiddleware:
 
     def __call__(self, request):
         response = self.get_response(request)
+        if request.path.startswith(('/pay/', '/api/payment-links/')):
+            response['Referrer-Policy'] = 'no-referrer'
+            response['Cache-Control'] = 'private, no-store'
+            response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
         # X-Content-Type-Options
         response.setdefault('X-Content-Type-Options', 'nosniff')
         response.setdefault('X-Frame-Options', 'DENY')

@@ -1268,6 +1268,9 @@ class PaymentTransactionAdmin(admin.ModelAdmin):
 	change_list_template = 'admin/store/paymenttransaction/change_list.html'
 	actions = ('recover_selected_success_transactions',)
 
+	def get_queryset(self, request):
+		return super().get_queryset(request).filter(payment_link__isnull=True)
+
 	def recover_selected_success_transactions(self, request, queryset):
 		from .views import _mark_order_paid_and_finalize, _send_order_paid_notifications
 
@@ -1648,3 +1651,7 @@ def _fetch_flutterwave_balances(*, force_refresh=False):
 	if cache_ttl > 0:
 		cache.set(cache_key, result, cache_ttl)
 	return result
+
+
+# Register the separate payment-link model and admin views.
+from . import payment_link_admin

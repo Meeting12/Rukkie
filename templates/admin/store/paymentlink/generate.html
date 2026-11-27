@@ -1,0 +1,37 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'admin/css/forms.css' %}">
+  <link rel="stylesheet" href="{% static 'store/admin/payment-links.css' %}">
+{% endblock %}
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+    {% if can_view_links %}<a href="{% url 'admin:store_paymentlink_changelist' %}">Payment Links</a> &rsaquo;{% endif %}
+    Generate Payment Link
+  </div>
+{% endblock %}
+{% block content %}
+  {% if requires_https %}
+    <p role="alert">Open the admin over HTTPS to generate a payment link.</p>
+    {% if debug %}<p>For local testing, start Django with the <code>runserver_https</code> command, then sign in on that server.</p>{% endif %}
+  {% elif payment_url %}
+    <p role="status">Payment link generated.{% if email_queued %} Email queued.{% endif %}</p>
+    <div class="payment-links-generated">
+      <label for="generated-payment-url">Payment link</label>
+      <input id="generated-payment-url" type="url" value="{{ payment_url }}" readonly>
+      <a href="{{ payment_url }}?preview=1" target="_blank" rel="noopener noreferrer" class="button">Preview payment page</a>
+      <a href="{% url 'admin:store_paymentlink_add' %}" class="button">Generate another link</a>
+    </div>
+  {% elif form.gateways %}
+    <form method="post">
+      {% csrf_token %}
+      <fieldset class="module aligned payment-links-form payment-links-fallback-form">{{ form.as_div }}</fieldset>
+      <div class="submit-row"><input type="submit" class="default" value="Generate Link"></div>
+    </form>
+  {% else %}
+    {{ form.non_field_errors }}
+    <p>Payment gateways are unavailable. Check the payment-link settings on the web service.</p>
+  {% endif %}
+{% endblock %}

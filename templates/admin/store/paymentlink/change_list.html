@@ -1,0 +1,25 @@
+{% extends "admin/change_list.html" %}
+{% block extrahead %}
+  {{ block.super }}
+  {% include "admin/store/paymentlink/assets.html" %}
+{% endblock %}
+{% block object-tools-items %}
+  {% if can_generate_payment_link %}
+  <li>{% include "admin/store/paymentlink/generate_button.html" %}</li>
+  {% endif %}
+{% endblock %}
+{% block result_list %}
+  <div data-payment-link-tools></div>
+  {% if not can_generate_payment_link %}<p>Generating links requires the Add payment link permission.</p>{% endif %}
+  <section class="payment-links-summary" aria-label="Payment link analytics">
+    <article><span>Total links</span><strong>{{ payment_link_counts.total }}</strong></article>
+    <article><span>Pending</span><strong>{{ payment_link_counts.pending }}</strong></article>
+    <article><span>Successful payments</span><strong>{{ payment_link_counts.paid }}</strong></article>
+    <article><span>Expired</span><strong>{{ payment_link_counts.expired }}</strong></article>
+    <article><span>Revenue collected</span>
+      {% for row in payment_link_revenue %}<strong>{{ row.currency }} {{ row.total|floatformat:2 }}</strong>
+      {% empty %}<strong>—</strong>{% endfor %}
+    </article>
+  </section>
+  {{ block.super }}
+{% endblock %}

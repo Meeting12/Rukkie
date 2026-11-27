@@ -21,6 +21,17 @@ def _env_float(name: str, default: float = 0.0) -> float:
         return default
 
 
+def _exclude_payment_link_requests(event, hint):
+    request = event.get('request') or {}
+    route = str(event.get('transaction') or '')
+    url = str(request.get('url') or '')
+    if any(path in url or path in route for path in ('/pay/', '/api/payment-links/')):
+        return None
+    if '/api/payments/webhook/flutterwave/' in url:
+        request.pop('data', None)
+    return event
+
+
 def init_sentry(*, debug: bool = False) -> bool:
     dsn = str(os.environ.get("SENTRY_DSN", "") or "").strip()
     if not dsn:
@@ -47,6 +58,8 @@ def init_sentry(*, debug: bool = False) -> bool:
         environment=environment,
         release=release,
         send_default_pii=send_default_pii,
+        before_send=_exclude_payment_link_requests,
+        before_send_transaction=_exclude_payment_link_requests,
         traces_sample_rate=traces_sample_rate,
         profiles_sample_rate=profiles_sample_rate,
         integrations=[

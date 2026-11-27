@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Rukkies receipt {{ link.reference }}</title>
+<style>
+body{font:16px system-ui,sans-serif;color:#2c2020;background:#fcf8f4;margin:0;padding:2rem}
+main{max-width:42rem;margin:auto;background:#fff;padding:2rem;border:1px solid #eadcd4;border-radius:1rem}
+h1,h2{font-family:Georgia,serif}dt{font-weight:700}dd{margin:0 0 1rem;overflow-wrap:anywhere}
+</style></head>
+<body><main>
+<p>De-Rukkies Collections</p><h1>Payment receipt</h1>
+<h2>{{ link.currency }} {{ link.amount }}</h2>
+<dl>
+  <dt>Paid by</dt><dd>{{ link.customer_name }}</dd>
+  <dt>For</dt><dd>{{ link.description }}</dd>
+  <dt>Payment reference</dt><dd>{{ link.reference }}</dd>
+  {% if link.order_reference %}<dt>Order reference</dt><dd>{{ link.order_reference }}</dd>{% endif %}
+  <dt>Gateway</dt><dd>{{ link.get_gateway_display }}</dd>
+  <dt>Paid at</dt><dd>{{ link.paid_at|date:"Y-m-d H:i T" }}</dd>
+</dl>
+</main></body></html>
