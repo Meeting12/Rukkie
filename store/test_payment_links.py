@@ -15,6 +15,7 @@ from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from .email_delivery import LOGO_CONTENT_ID
 from .models import Order, PaymentLink, PaymentLinkAttempt, PaymentLinkNotice, PaymentTransaction
 from .payment_link_gateways import GatewayError, Verification
 from .payment_links import apply_verification, payment_url, reserve_attempt
@@ -263,18 +264,47 @@ class PaymentLinkTests(TestCase):
         self.assertEqual(link.transactions.get().provider_transaction_id, '911')
 
     def test_notices_deliver_once_with_receipt_attachment(self):
-        link = link_factory()
+        link = link_factory(description='Custom <order>', order_reference='ORDER-123')
         invitation = PaymentLinkNotice.objects.create(link=link, kind='invitation', recipient=link.customer_email)
         deliver_payment_link_notice.run(invitation.pk)
         deliver_payment_link_notice.run(invitation.pk)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn(payment_url(link), mail.outbox[0].body)
+        url = payment_url(link)
+        email = mail.outbox[0]
+        self.assertIn(url, email.body)
+        html = email.alternatives[0].content
+        self.assertIn('De-Rukkies Collections', html)
+        self.assertIn('Open Secure Payment Page', html)
+        self.assertIn(f'href="{url}"', html)
+        self.assertIn('Custom &lt;order&gt;', html)
+        self.assertIn('Amount due', html)
+        self.assertIn('USD 25.00', html)
+        self.assertIn('ORDER-123', html)
+        self.assertIn('Expires', html)
+        self.assertIn('mailto:support@example.test', html)
+
         attempt, _ = reserve_attempt(link.reference)
         apply_verification(attempt, Verification('paid', 'pi_receipt'))
-        receipt = PaymentLinkNotice.objects.get(kind='receipt')
-        deliver_payment_link_notice.run(receipt.pk)
-        self.assertEqual(len(mail.outbox), 2)
-        self.assertTrue(any(attachment.filename.endswith('.html') for attachment in mail.outbox[1].attachments))
+        for kind in ('confirmation', 'receipt', 'admin_payment'):
+            with self.subTest(kind=kind):
+                notice = PaymentLinkNotice.objects.get(kind=kind)
+                deliver_payment_link_notice.run(notice.pk)
+                email = mail.outbox[-1]
+                html = email.alternatives[0].content
+                self.assertIn('De-Rukkies Collections', html)
+                self.assertIn('Amount paid', html)
+                self.assertIn('Sample Customer', html)
+                self.assertNotIn(url, html)
+                self.assertNotIn(url, email.body)
+                self.assertNotIn('Open Secure Payment Page', html)
+                if kind == 'receipt':
+                    self.assertTrue(any(attachment.filename.endswith('.html') for attachment in email.attachments))
+                    body, attachment = email.message().get_payload()
+                    self.assertEqual(attachment.get_content_disposition(), 'attachment')
+                    related = body.get_payload(1)
+                    self.assertEqual(related.get_content_type(), 'multipart/related')
+                    self.assertEqual(related.get_payload(1)['Content-ID'], f'<{LOGO_CONTENT_ID}>')
+        self.assertEqual(len(mail.outbox), 4)
 
     def test_invitation_can_send_and_resend_while_checkout_is_processing(self):
         link = link_factory()

@@ -2,10 +2,13 @@ import json
 import logging
 import os
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from html import escape
 
 from django.conf import settings
+
+from .email_delivery import LOGO_CONTENT_ID, WELCOME_BANNER_CONTENT_ID
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +132,7 @@ def _card(rows):
             f"""
             <tr>
               <td style="padding:8px 0;color:#7A6E63;font-size:12px;font-weight:{('700' if is_total else '600')};text-align:left;">{escape(label_text)}</td>
-              <td style="padding:8px 0;color:#3A2F28;font-size:13px;font-weight:{('700' if is_total else '600')};text-align:right;">{escape(value)}</td>
+              <td style="padding:8px 0 8px 12px;color:#3A2F28;font-size:13px;font-weight:{('700' if is_total else '600')};text-align:right;overflow-wrap:anywhere;word-break:break-word;">{escape(value)}</td>
             </tr>
             """
         )
@@ -143,7 +146,7 @@ def _card(rows):
     )
 
 
-def _button(href, label, variant="primary"):
+def _button(href, label, variant="primary", *, primary_text_color="#fff"):
     href = _text(href)
     if not href:
         return ""
@@ -153,19 +156,21 @@ def _button(href, label, variant="primary"):
         'style="display:inline-block;padding:12px 22px;border-radius:9999px;text-decoration:none;'
         'font-size:13px;font-weight:700;letter-spacing:.03em;margin-right:8px;margin-bottom:8px;'
         f'background:{("#C6A96B" if primary else "transparent")};'
-        f'color:{("#fff" if primary else "#3A2F28")};'
+        f'color:{(primary_text_color if primary else "#3A2F28")};'
         f'border:1px solid {("#C6A96B" if primary else "#E7DDD0")};">'
         f"{escape(str(label))}</a>"
     )
 
 
 def _wrap_email(*, title, subtitle="", body_html="", site_name="De-Rukkies Collections", support_email=""):
-    year = "2026"
+    year = datetime.now(UTC).year
     return f"""<!doctype html>
-<html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="margin:0;padding:24px 12px;background:#F5EFE6;color:#3A2F28;font-family:Inter,Arial,sans-serif;">
   <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;border:1px solid #E7DDD0;box-shadow:0 12px 32px rgba(58,47,40,.08);">
-    <div style="background:linear-gradient(135deg,#2F2721,#493A2F);padding:24px 28px;text-align:center;">
+    <div style="background-color:#2F2721;background-image:linear-gradient(135deg,#2F2721,#493A2F);padding:24px 28px;text-align:center;">
+      <img src="cid:{LOGO_CONTENT_ID}" alt="" width="48" height="48" style="display:block;width:48px;height:48px;margin:0 auto 10px;border-radius:10px;">
       <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:.06em;color:#F2DDAB;">{escape(site_name)}</p>
     </div>
     <div style="padding:28px;line-height:1.55;">
@@ -176,11 +181,24 @@ def _wrap_email(*, title, subtitle="", body_html="", site_name="De-Rukkies Colle
     <div style="background:#2F2721;color:rgba(255,255,255,.82);padding:18px 28px 24px;border-top:1px solid rgba(255,255,255,.08);text-align:center;">
       <p style="margin:0;font-size:13px;">{escape(site_name)}</p>
       <p style="margin:8px 0 0;font-size:12px;color:rgba(255,255,255,.65);">© {year} {escape(site_name)}. All rights reserved.</p>
-      {f'<p style="margin:8px 0 0;font-size:12px;color:rgba(255,255,255,.65);">Support: {escape(support_email)}</p>' if support_email else ''}
+      {f'<p style="margin:8px 0 0;font-size:12px;">Support: <a href="mailto:{escape(support_email)}" style="color:#F2DDAB;">{escape(support_email)}</a></p>' if support_email else ''}
     </div>
   </div>
 </body>
 </html>"""
+
+
+def render_payment_link_email_html(*, title, greeting, intro, details, url, support_email):
+    """Use the transactional email layout directly on the Celery worker."""
+    paragraphs = "".join(
+        f'<p style="margin:0 0 16px;color:#7A6E63;font-size:14px;">{escape(line)}</p>'
+        for line in (greeting, intro) if line
+    )
+    button = _button(url, "Open Secure Payment Page", primary_text_color="#3A2F28")
+    body_html = paragraphs + _card(details)
+    if button:
+        body_html += f'<div style="text-align:center;">{button}</div>'
+    return _wrap_email(title=title, body_html=body_html, support_email=support_email)
 
 
 def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
@@ -380,6 +398,7 @@ def _render_builtin_email_html(template_name: str, props: dict) -> str | None:
         promo_code = _text(props.get("promoCode"), "WELCOME15")
         user_name = _text(props.get("userName"), "there")
         body_html = (
+            f'<img src="cid:{WELCOME_BANNER_CONTENT_ID}" alt="" width="584" style="display:block;width:100%;max-width:584px;height:auto;border-radius:12px;margin:0 0 16px;">'
             f'<p style="margin:0 0 16px;color:#7A6E63;font-size:14px;">Hi {escape(user_name)}, your email has been verified successfully and your account is now active.</p>'
             f'<p style="margin:0 0 16px;color:#7A6E63;font-size:14px;">We&apos;re glad to have you at {escape(site_name)}. You can now log in, manage your account, and start shopping.</p>'
             '<div style="background:#FBF8F2;border:1px solid #E7DDD0;border-radius:14px;padding:16px;margin:16px 0 18px;">'

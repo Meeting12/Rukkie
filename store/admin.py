@@ -11,7 +11,6 @@ from urllib.parse import urlparse, unquote, urlencode
 import base64
 from django.http import HttpResponse
 from datetime import datetime, timedelta
-from django.core.mail import send_mail
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.cache import cache
@@ -35,6 +34,7 @@ from .models import (
 )
 from .media_layout import normalize_slug, ensure_category_media_structure, category_media_paths
 from .tasks import analyze_and_apply_image
+from .email_delivery import StoreEmail
 from .email_react import get_public_site_url, render_react_email_html
 
 logger = logging.getLogger(__name__)
@@ -1230,8 +1230,7 @@ class OrderAdmin(admin.ModelAdmin):
 					}
 				)
 				try:
-					send_mail(subject, body, from_email, [user.email], html_message=html_body, fail_silently=True)
-					sent += 1
+					sent += StoreEmail(subject, body, from_email, [user.email], html=html_body).send(fail_silently=True)
 				except Exception:
 					# fail silently; admin can re-send manually
 					pass

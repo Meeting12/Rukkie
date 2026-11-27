@@ -35,7 +35,8 @@ const styles = {
     border: `1px solid ${colors.border}`,
   } as React.CSSProperties,
   header: {
-    background: "linear-gradient(135deg, #2F2721, #493A2F)",
+    backgroundColor: "#2F2721",
+    backgroundImage: "linear-gradient(135deg, #2F2721, #493A2F)",
     padding: "24px 28px",
     color: "#fff",
     textAlign: "center",
@@ -136,6 +137,13 @@ function EmailShell({
       <body style={styles.body}>
         <div style={styles.wrapper}>
           <div style={styles.header}>
+            <img
+              src="cid:rukkies-logo@rukkies.com"
+              alt=""
+              width={48}
+              height={48}
+              style={{ display: "block", width: 48, height: 48, margin: "0 auto 10px", borderRadius: 10 }}
+            />
             <p style={styles.brand}>{siteName}</p>
           </div>
           {children}
@@ -669,6 +677,12 @@ function WelcomeEmail(props: TemplateProps) {
       <div style={styles.content}>
         <h1 style={styles.title}>Welcome to the Family</h1>
         <p style={styles.subtitle}>Your account is now active</p>
+        <img
+          src="cid:welcome-banner@rukkies.com"
+          alt=""
+          width={584}
+          style={{ display: "block", width: "100%", maxWidth: 584, height: "auto", borderRadius: 12, margin: "0 0 16px" }}
+        />
         <p style={styles.p}>
           Hi {userName}, your email has been verified successfully and your account is now active.
         </p>

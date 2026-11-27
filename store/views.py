@@ -12,7 +12,7 @@ from django.db.models import Count, Q, Avg, Case, When, Value, IntegerField
 from .serializers import (
     ProductSerializer, CartSerializer, CartItemSerializer, OrderSerializer,
     ShippingMethodSerializer, AddressSerializer, CategorySerializer, HomeHeroSlideSerializer, ProductReviewSerializer,
-    UserNotificationSerializer, UserMailboxMessageSerializer, ProductImageSerializer, _resolve_image_url,
+    UserNotificationSerializer, UserMailboxMessageSerializer, _resolve_image_url,
 )
 from django.db import transaction
 from decimal import Decimal, InvalidOperation
@@ -26,7 +26,6 @@ from rest_framework.permissions import IsAuthenticated
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
-from django.core.mail import send_mail
 from django.core.cache import cache
 from django.contrib.auth.tokens import default_token_generator
 from django.urls import reverse
@@ -42,6 +41,9 @@ import re
 from uuid import uuid4
 from django.views.decorators.csrf import csrf_exempt
 from ipaddress import ip_address
+from time import monotonic
+from urllib.parse import urljoin
+from .email_delivery import StoreEmail, product_email_thumbnail
 from .email_react import get_public_site_url, render_react_email_html
 
 logger = logging.getLogger(__name__)
@@ -126,20 +128,16 @@ def _set_storefront_theme_value(theme_value: str) -> str:
     return normalized
 
 
-def _safe_send_email(*, subject, message, recipient_list, event_name, html_message=None):
+def _safe_send_email(*, subject, message, recipient_list, event_name, html_message=None, inline_images=None):
     recipients = [r for r in (recipient_list or []) if r]
     if not recipients:
         logger.warning('%s email skipped: no recipients', event_name)
         return False
     try:
-        sent_count = send_mail(
-            subject=subject,
-            message=message,
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@derukkies.com'),
-            recipient_list=recipients,
-            html_message=html_message,
-            fail_silently=False,
-        )
+        sent_count = StoreEmail(
+            subject, message, settings.DEFAULT_FROM_EMAIL, recipients,
+            html=html_message, inline_images=inline_images,
+        ).send(fail_silently=False)
         logger.info('%s email sent to=%s sent_count=%s', event_name, ','.join(recipients), sent_count)
         return sent_count > 0
     except Exception:
@@ -296,6 +294,9 @@ def _send_order_created_notifications(order, contact_email=None, request=None):
         tax_text = ''
         subtotal_text = ''
         order_items_summary = []
+        inline_images = {}
+        image_urls = {}
+        image_deadline = monotonic() + 2.0
         try:
             items_qs = order.items.select_related('product').all()
             for item in items_qs:
@@ -315,28 +316,23 @@ def _send_order_created_notifications(order, contact_email=None, request=None):
                     }
                 )
                 try:
-                    first_image = item.product.images.first()
-                    image_url = ''
-                    if first_image and getattr(first_image, 'image', None):
-                        # Use the exact same serializer path as cart/storefront image payloads.
-                        try:
-                            serializer_context = {'request': request} if request is not None else {}
-                            image_url = str(
-                                ProductImageSerializer(first_image, context=serializer_context).data.get('image_url') or ''
-                            ).strip()
-                        except Exception:
-                            image_url = _resolve_image_url(getattr(first_image, 'image', None), request=request) or ''
-                        image_url = str(image_url).strip()
-                        if image_url.startswith('res.cloudinary.com/'):
-                            image_url = f'https://{image_url}'
-                        elif image_url.startswith('http://'):
-                            image_url = f'https://{image_url[len("http://"):]}'
-                        elif image_url.startswith('//'):
-                            image_url = f'https:{image_url}'
-                        elif image_url.startswith('/'):
-                            image_url = f'{site_root}{image_url}'
-                    if image_url:
-                        order_items_summary[-1]['imageUrl'] = image_url
+                    first_image = item.product.images.exclude(image='').first()
+                    if first_image and first_image.pk not in image_urls:
+                        source = _resolve_image_url(first_image.image)
+                        image_url = urljoin(f'{site_root}/', source) if source else ''
+                        if image_url.startswith('http://'):
+                            image_url = 'https://' + image_url[len('http://'):]
+                        if not image_url.startswith('https://'):
+                            image_url = ''
+                        if len(inline_images) < 6 and monotonic() < image_deadline:
+                            thumbnail = product_email_thumbnail(first_image.image, image_url, image_deadline)
+                            if thumbnail:
+                                content_id = f'product-{first_image.pk}@rukkies.com'
+                                inline_images[content_id] = ('jpeg', thumbnail)
+                                image_url = f'cid:{content_id}'
+                        image_urls[first_image.pk] = image_url
+                    if first_image:
+                        order_items_summary[-1]['imageUrl'] = image_urls[first_image.pk]
                 except Exception:
                     pass
             subtotal = sum((Decimal(str(item.price or 0)) * Decimal(str(item.quantity or 0))) for item in items_qs)
@@ -378,6 +374,7 @@ def _send_order_created_notifications(order, contact_email=None, request=None):
             message=customer_message,
             recipient_list=[recipient_email],
             event_name='order.created.customer',
+            inline_images=inline_images,
             html_message=render_react_email_html(
                 'OrderConfirmationEmail',
                 {
