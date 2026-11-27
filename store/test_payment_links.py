@@ -276,6 +276,37 @@ class PaymentLinkTests(TestCase):
         self.assertEqual(len(mail.outbox), 2)
         self.assertTrue(any(attachment.filename.endswith('.html') for attachment in mail.outbox[1].attachments))
 
+    def test_invitation_can_send_and_resend_while_checkout_is_processing(self):
+        link = link_factory()
+        invitation = PaymentLinkNotice.objects.create(link=link, kind='invitation', recipient=link.customer_email)
+        attempt, _ = reserve_attempt(link.reference)
+        deliver_payment_link_notice.run(invitation.pk)
+        invitation.refresh_from_db()
+        self.assertIsNotNone(invitation.sent_at)
+        self.assertIn(payment_url(link), mail.outbox[0].body)
+
+        admin = get_user_model().objects.create_superuser('manager', 'manager@example.test', 'test-password')
+        self.client.force_login(admin)
+        detail = self.client.get(reverse('admin:store_paymentlink_details', args=[link.pk]), secure=True)
+        self.assertContains(detail, 'data-payment-link-action="send"')
+        self.assertNotContains(detail, 'data-payment-link-action="revoke"')
+        with self.captureOnCommitCallbacks() as callbacks:
+            response = self.post(reverse('payment-link-admin-send', args=[link.reference]), {})
+        self.assertEqual(response.json(), {'email_queued': True})
+        self.assertEqual(len(callbacks), 1)
+        self.assertEqual(PaymentLinkNotice.objects.filter(link=link).count(), 2)
+        self.assertEqual(reserve_attempt(link.reference), (None, 'processing'))
+        self.assertEqual(link.attempts.get().pk, attempt.pk)
+
+    def test_invitation_cancels_for_expired_processing_link(self):
+        link = link_factory(status='processing', expires_at=timezone.now() - timedelta(seconds=1))
+        invitation = PaymentLinkNotice.objects.create(link=link, kind='invitation', recipient=link.customer_email)
+        deliver_payment_link_notice.run(invitation.pk)
+        invitation.refresh_from_db()
+        self.assertIsNotNone(invitation.cancelled_at)
+        self.assertIsNone(invitation.sent_at)
+        self.assertEqual(len(mail.outbox), 0)
+
     def test_database_refuses_two_active_attempts_and_two_successes(self):
         link = link_factory()
         attempt, _ = reserve_attempt(link.reference)

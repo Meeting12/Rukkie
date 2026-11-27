@@ -16,7 +16,10 @@ from django.views.decorators.http import require_GET, require_POST
 from .models import PaymentLink, PaymentLinkAttempt
 from .payment_link_gateways import GatewayError, available_gateways, create_checkout, stripe_payload, valid_flutterwave_signature
 from .payment_link_serializers import PaymentLinkCreateSerializer
-from .payment_links import audit, create_payment_link, display_status, enqueue_notice, payment_origin, rate_limit, reconcile, reconcile_link, reserve_attempt, token_reference
+from .payment_links import (
+    audit, can_send_invitation, create_payment_link, display_status, enqueue_notice,
+    payment_origin, rate_limit, reconcile, reconcile_link, reserve_attempt, token_reference,
+)
 
 
 def _payload(request):
@@ -127,7 +130,7 @@ def staff_send(request, reference):
         return _limited()
     with transaction.atomic():
         link = get_object_or_404(PaymentLink.objects.select_for_update(), reference=reference)
-        if display_status(link) not in (PaymentLink.Status.PENDING, PaymentLink.Status.FAILED):
+        if not can_send_invitation(link):
             return JsonResponse({'detail': 'This link is unavailable for sending.'}, status=409)
         enqueue_notice(link, 'invitation', link.customer_email)
         audit(link, 'invitation_queued', request.user)

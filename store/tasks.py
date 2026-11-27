@@ -53,16 +53,16 @@ def analyze_and_apply_image(self, product_image_id: int):
 
 @shared_task(bind=True, max_retries=4, ignore_result=True)
 def deliver_payment_link_notice(self, notice_id):
-    from .models import PaymentLink, PaymentLinkNotice
+    from .models import PaymentLinkNotice
     from .payment_link_mail import send_payment_link_notice
-    from .payment_links import audit, display_status
+    from .payment_links import audit, can_send_invitation
 
     now = timezone.now()
     queue = PaymentLinkNotice.objects.filter(pk=notice_id, sent_at__isnull=True, cancelled_at__isnull=True)
     if not queue.filter(Q(claimed_at__isnull=True) | Q(claimed_at__lt=now - timedelta(minutes=10))).update(claimed_at=now):
         return
     notice = queue.select_related('link').get()
-    if notice.kind == 'invitation' and display_status(notice.link) not in (PaymentLink.Status.PENDING, PaymentLink.Status.FAILED):
+    if notice.kind == 'invitation' and not can_send_invitation(notice.link):
         queue.update(cancelled_at=timezone.now())
         return
     try:

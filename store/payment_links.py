@@ -74,6 +74,12 @@ def display_status(link):
     return link.status
 
 
+def can_send_invitation(link):
+    return link.expires_at > timezone.now() and link.status in (
+        PaymentLink.Status.PENDING, PaymentLink.Status.PROCESSING, PaymentLink.Status.FAILED,
+    )
+
+
 def rate_limit(scope, identity, limit):
     key = hashlib.sha256(f'{scope}:{identity}'.encode()).hexdigest()
     now = timezone.now()

@@ -20,8 +20,10 @@
       <button class="button" data-payment-link-action="copy" data-url="{{ url }}">Copy payment link</button>
       <a class="button" href="{{ url }}?preview=1" target="_blank" rel="noopener noreferrer">Preview payment page</a>
     {% endif %}
-    {% if can_manage %}
+    {% if can_send %}
       <button class="button" data-payment-link-action="send" data-reference="{{ link.reference }}">Send or resend</button>
+    {% endif %}
+    {% if can_revoke %}
       <button class="button deletelink" data-payment-link-action="revoke" data-reference="{{ link.reference }}">Revoke</button>
     {% endif %}
     {% if receipt_url %}<a class="button" href="{{ receipt_url }}">Download receipt</a>{% endif %}

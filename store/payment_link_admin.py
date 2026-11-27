@@ -12,7 +12,7 @@ from django.utils.html import format_html, format_html_join
 from .models import PaymentLink
 from .payment_link_gateways import available_gateways
 from .payment_link_serializers import PaymentLinkCreateSerializer
-from .payment_links import audit, create_payment_link, payment_url, rate_limit, with_display_status
+from .payment_links import audit, can_send_invitation, create_payment_link, payment_url, rate_limit, with_display_status
 
 
 class PaymentLinkAdminForm(forms.Form):
@@ -105,11 +105,14 @@ class PaymentLinkAdmin(admin.ModelAdmin):
                     format_html('<button type="button" data-payment-link-action="copy" data-url="{}">Copy link</button>', url),
                     format_html('<a href="{}?preview=1" target="_blank" rel="noopener noreferrer">Preview</a>', url),
                 ])
+            if can_manage and can_send_invitation(link):
+                links.append(format_html(
+                    '<button type="button" data-payment-link-action="send" data-reference="{}">Send or resend</button>', link.reference,
+                ))
             if can_manage and link.display_status in ('pending', 'failed'):
-                links.extend([
-                    format_html('<button type="button" data-payment-link-action="send" data-reference="{}">Send or resend</button>', link.reference),
-                    format_html('<button type="button" data-payment-link-action="revoke" data-reference="{}">Revoke</button>', link.reference),
-                ])
+                links.append(format_html(
+                    '<button type="button" data-payment-link-action="revoke" data-reference="{}">Revoke</button>', link.reference,
+                ))
             if link.status == 'paid':
                 links.append(format_html('<a href="{}">Download receipt</a>', reverse('admin:store_paymentlink_receipt', args=[link.pk])))
             return format_html('<div class="payment-links-row-actions">{}</div>', format_html_join('', '{}', ((item,) for item in links)))
@@ -187,14 +190,15 @@ class PaymentLinkAdmin(admin.ModelAdmin):
             url = payment_url(link)
         except ValueError:
             url = ''
-        status = link.display_status
+        can_manage = request.user.has_perm('store.change_paymentlink')
         return TemplateResponse(request, 'admin/store/paymentlink/details.html', {
             **self.admin_site.each_context(request),
             'title': 'Payment link details', 'link': link, 'url': url,
             'attempts': link.attempts.order_by('-created_at'), 'transactions': link.transactions.order_by('-created_at'),
             'audit_entries': link.audit.select_related('actor'),
             'receipt_url': reverse('admin:store_paymentlink_receipt', args=[link.pk]) if link.status == 'paid' else '',
-            'can_manage': status in ('pending', 'failed') and request.user.has_perm('store.change_paymentlink'),
+            'can_send': can_manage and can_send_invitation(link),
+            'can_revoke': can_manage and link.display_status in ('pending', 'failed'),
         })
 
     def receipt(self, request, object_id):
